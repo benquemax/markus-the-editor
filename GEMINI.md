@@ -15,4 +15,10 @@ To ensure code quality and prevent regressions, the following development cycle 
 3.  **Run Tests:** Execute the newly written tests to ensure they pass. If they fail, iterate on the implementation until all tests pass.
 4.  **Integrate Tests:** Integrate the new tests into the project's automated build process (e.g., by adding them to `package.json` scripts or build configurations) so they run automatically on every build.
 5.  **Run Lint & Build:** Before asking the user to run the development server or test the feature, always run the project's linting and build commands (e.g., `pnpm lint`, `pnpm build`, `tsc`). It is unproductive to ask the user to test a feature if the code does not pass linting or fails to build.
-6.  **User Verification:** Only after all tests pass, and linting and building are successful, should the user be asked to verify the feature (e.g., by running the development server).
+6.  **Review and Refactor:** After initial implementation and passing tests/lint/build, review the changes using `git diff` (without a pager) to ensure code quality, adherence to conventions, and identify any refactoring opportunities.
+7.  **Re-run Lint & Build (if refactored):** If any refactoring was done in the previous step, re-run linting and build commands to ensure no regressions or new issues were introduced.
+8.  **User Verification:** Only after all tests pass, and linting and building are successful, should the user be asked to verify the feature (e.g., by running the development server).
+
+## Roadmap Management
+
+*   **Keep `_roadmap.md` Updated:** After completing a task or a set of sub-tasks, ensure the corresponding checkbox in `_roadmap.md` is ticked (`[x]`). This helps track progress and provides a clear overview of completed work.
