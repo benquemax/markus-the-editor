@@ -10,7 +10,7 @@ This roadmap outlines the key milestones and tasks for achieving the Minimum Via
     *   [x] Integrate `Marked` for Markdown parsing.
     *   [x] Display real-time rendered output alongside the editor.
     *   [x] Ensure basic Markdown syntax (headers, bold, italics, lists) renders correctly.
-    *   [ ] Implement a clean, distraction-free UI layout.
+    *   [x] Implement a clean, distraction-free UI layout.
 
 ## Milestone 2: Native File Operations
 
