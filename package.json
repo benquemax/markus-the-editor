@@ -3,7 +3,10 @@
   "version": "0.1.0",
   "description": "A local WYSIWYG Markdown editor built with Electron, React, and ProseMirror",
   "main": "dist-electron/main.js",
-  "author": "Markus Team",
+  "author": {
+    "name": "Tom Himanen",
+    "email": "tom.himanen@futuhima.ninja"
+  },
   "license": "MIT",
   "scripts": {
     "dev": "vite",
