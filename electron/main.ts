@@ -7,7 +7,7 @@ import { setupFileWatcher, stopFileWatcher } from './fileWatcher'
 import { setupGitHandlers } from './git'
 import Store from 'electron-store'
 
-// Disable GPU acceleration if it causes issues
+// Disable GPU acceleration if it causes issues on some Linux systems
 app.disableHardwareAcceleration()
 
 const store = new Store({
@@ -23,6 +23,34 @@ let currentFilePath: string | null = null
 
 const DIST = path.join(__dirname, '../dist')
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
+
+/**
+ * Dialog Helper Functions
+ *
+ * These helpers ensure dialogs are always shown with mainWindow as parent.
+ *
+ * Note: Electron 28 had a bug where dialogs appeared behind the window on Linux/GTK.
+ * This was fixed in Electron 29+ via PR #42045:
+ * - https://github.com/electron/electron/issues/32857
+ * - https://github.com/electron/electron/pull/42045
+ *
+ * IMPORTANT: Always use these helpers instead of calling dialog.show* directly
+ * to ensure consistent behavior and proper parent window attachment.
+ */
+async function showOpenDialog(options: Electron.OpenDialogOptions) {
+  if (!mainWindow) return { canceled: true, filePaths: [] }
+  return dialog.showOpenDialog(mainWindow, options)
+}
+
+async function showSaveDialog(options: Electron.SaveDialogOptions) {
+  if (!mainWindow) return { canceled: true, filePath: undefined }
+  return dialog.showSaveDialog(mainWindow, options)
+}
+
+async function showMessageBox(options: Electron.MessageBoxOptions) {
+  if (!mainWindow) return { response: 0, checkboxChecked: false }
+  return dialog.showMessageBox(mainWindow, options)
+}
 
 function createWindow() {
   const bounds = store.get('windowBounds') as { width: number; height: number }
@@ -91,9 +119,7 @@ async function handleNewFile() {
 }
 
 async function handleOpenFile() {
-  if (!mainWindow) return
-
-  const result = await dialog.showOpenDialog(mainWindow, {
+  const result = await showOpenDialog({
     properties: ['openFile'],
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown'] },
@@ -134,7 +160,7 @@ async function handleSaveFile() {
 async function handleSaveAsFile() {
   if (!mainWindow) return
 
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const result = await showSaveDialog({
     filters: [
       { name: 'Markdown', extensions: ['md'] },
       { name: 'All Files', extensions: ['*'] }
@@ -154,7 +180,7 @@ async function handleSaveAsFile() {
 async function handlePrintToPdf() {
   if (!mainWindow) return
 
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const result = await showSaveDialog({
     filters: [{ name: 'PDF', extensions: ['pdf'] }],
     defaultPath: currentFilePath
       ? currentFilePath.replace(/\.(md|markdown)$/i, '.pdf')
@@ -203,7 +229,7 @@ ipcMain.handle('file:open', async () => {
 ipcMain.handle('file:saveAs', async (_, content: string) => {
   if (!mainWindow) return { success: false, error: 'No window' }
 
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const result = await showSaveDialog({
     filters: [
       { name: 'Markdown', extensions: ['md'] },
       { name: 'All Files', extensions: ['*'] }
@@ -230,8 +256,7 @@ ipcMain.handle('file:saveAs', async (_, content: string) => {
 ipcMain.handle('file:getCurrentPath', () => currentFilePath)
 
 ipcMain.handle('dialog:showMessage', async (_, options: { type: string; title: string; message: string; buttons: string[] }) => {
-  if (!mainWindow) return { response: 0 }
-  const result = await dialog.showMessageBox(mainWindow, {
+  const result = await showMessageBox({
     type: options.type as 'none' | 'info' | 'error' | 'question' | 'warning',
     title: options.title,
     message: options.message,

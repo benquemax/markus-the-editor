@@ -126,6 +126,16 @@ function App() {
     }
   }, [])
 
+  // Handle Save As
+  const handleSaveAs = useCallback(async () => {
+    const currentContent = editorRef.current?.getContent() || content
+    const result = await window.electron.file.saveAs(currentContent)
+    if (result.success && result.filePath) {
+      setFilePath(result.filePath)
+      setIsDirty(false)
+    }
+  }, [content])
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -133,11 +143,16 @@ function App() {
         e.preventDefault()
         setShowCommandPalette(true)
       }
+      // Ctrl+Shift+S for Save As
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'S') {
+        e.preventDefault()
+        handleSaveAs()
+      }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [handleSaveAs])
 
   // Handle drag and drop
   useEffect(() => {
@@ -198,10 +213,7 @@ function App() {
     { id: 'new', label: 'New File', shortcut: 'Ctrl+N', action: () => window.electron.file.onNew },
     { id: 'open', label: 'Open File', shortcut: 'Ctrl+O', action: () => window.electron.file.open() },
     { id: 'save', label: 'Save', shortcut: 'Ctrl+S', action: handleSave },
-    { id: 'saveAs', label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: async () => {
-      const currentContent = editorRef.current?.getContent() || content
-      await window.electron.file.saveAs(currentContent)
-    }},
+    { id: 'saveAs', label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
     { id: 'split', label: 'Toggle Split View', shortcut: 'Ctrl+\\', action: () => setShowSplitView(v => !v) },
     { id: 'theme-light', label: 'Light Theme', action: () => setTheme('light') },
     { id: 'theme-dark', label: 'Dark Theme', action: () => setTheme('dark') },

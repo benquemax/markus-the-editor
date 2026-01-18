@@ -62,6 +62,8 @@
 /* Editor specific styles */
 .ProseMirror {
   @apply outline-none min-h-full p-4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
 }
 
 .ProseMirror p {

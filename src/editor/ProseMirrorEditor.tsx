@@ -27,6 +27,11 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
   ({ initialContent = '', onChange, onSave }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
+    // Use ref to always have access to the latest onSave callback
+    // This avoids stale closure issues where filePath might be null
+    const onSaveRef = useRef(onSave)
+    onSaveRef.current = onSave
+
     const [slashMenuState, setSlashMenuState] = useState<SlashMenuState>({
       active: false,
       query: '',
@@ -73,9 +78,12 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         ? markdownParser.parse(initialContent)
         : schema.nodes.doc.create(null, schema.nodes.paragraph.create())
 
+      // Wrapper that calls the ref to always get latest onSave
+      const handleSave = () => onSaveRef.current?.()
+
       const plugins = [
         buildInputRules(),
-        buildKeymap(onSave),
+        buildKeymap(handleSave),
         history(),
         dropCursor(),
         gapCursor(),

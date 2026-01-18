@@ -71,7 +71,8 @@ Creates distributable packages for your platform (AppImage, deb, pacman on Linux
 | `Ctrl+B` | Bold |
 | `Ctrl+I` | Italic |
 | `Ctrl+`` | Inline Code |
-| `Ctrl+Shift+S` | Strikethrough |
+| `Ctrl+Shift+S` | Save As |
+| `Ctrl+Shift+X` | Strikethrough |
 | `Ctrl+Alt+1-6` | Heading 1-6 |
 | `Ctrl+Shift+C` | Code Block |
 | `Ctrl+Shift+>` | Blockquote |

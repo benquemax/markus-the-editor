@@ -48,7 +48,7 @@ export function buildKeymap(onSave?: () => void) {
   keys['Mod-b'] = toggleMark(schema.marks.strong)
   keys['Mod-i'] = toggleMark(schema.marks.em)
   keys['Mod-`'] = toggleMark(schema.marks.code)
-  keys['Mod-Shift-s'] = toggleMark(schema.marks.strikethrough)
+  keys['Mod-Shift-x'] = toggleMark(schema.marks.strikethrough)
 
   // Headings
   keys['Mod-Alt-1'] = toggleHeading(1)

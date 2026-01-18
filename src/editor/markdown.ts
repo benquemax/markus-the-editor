@@ -30,7 +30,17 @@ export const markdownParser = new MarkdownParser(schema, md as any, {
     title: tok.attrGet('title') || null
   })},
   code_inline: { mark: 'code' },
-  s: { mark: 'strikethrough' }
+  s: { mark: 'strikethrough' },
+  // Ignore table tokens (tables not yet supported in editor)
+  table: { ignore: true },
+  thead: { ignore: true },
+  tbody: { ignore: true },
+  tr: { ignore: true },
+  th: { ignore: true },
+  td: { ignore: true },
+  // Ignore other unsupported tokens
+  html_block: { ignore: true, noCloseToken: true },
+  html_inline: { ignore: true, noCloseToken: true }
 })
 
 export const markdownSerializer = new MarkdownSerializer({
