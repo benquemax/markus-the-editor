@@ -14,7 +14,7 @@ provides=('markus' 'markus-the-editor')
 conflicts=('markus' 'markus-the-editor')
 options=('!strip' '!debug')
 source=("Markus-${pkgver}.AppImage::${url}/releases/download/v${pkgver}/Markus-${pkgver}.AppImage")
-sha256sums=('SKIP')  # Update with: sha256sum Markus-${pkgver}.AppImage
+sha256sums=('31cab01800dcc4d74f461efebb5574cbeb024dd1db8abc5f0c5a4c9733b808f4')
 
 prepare() {
     chmod +x "Markus-${pkgver}.AppImage"
