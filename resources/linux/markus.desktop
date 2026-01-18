@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Markus
+Comment=WYSIWYG Markdown editor
+Exec=markus %F
+Icon=markus
+Type=Application
+Terminal=false
+MimeType=text/markdown;text/x-markdown;
+Categories=TextEditor;Utility;Development;
+Keywords=markdown;editor;text;notes;
+StartupNotify=true

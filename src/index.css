@@ -1,0 +1,195 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Editor specific styles */
+.ProseMirror {
+  @apply outline-none min-h-full p-4;
+}
+
+.ProseMirror p {
+  @apply mb-4;
+}
+
+.ProseMirror h1 {
+  @apply text-4xl font-bold mb-4 mt-6;
+}
+
+.ProseMirror h2 {
+  @apply text-3xl font-bold mb-3 mt-5;
+}
+
+.ProseMirror h3 {
+  @apply text-2xl font-bold mb-3 mt-4;
+}
+
+.ProseMirror h4 {
+  @apply text-xl font-bold mb-2 mt-3;
+}
+
+.ProseMirror h5 {
+  @apply text-lg font-bold mb-2 mt-3;
+}
+
+.ProseMirror h6 {
+  @apply text-base font-bold mb-2 mt-3;
+}
+
+.ProseMirror strong {
+  @apply font-bold;
+}
+
+.ProseMirror em {
+  @apply italic;
+}
+
+.ProseMirror code {
+  @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+}
+
+.ProseMirror pre {
+  @apply bg-muted p-4 rounded-lg overflow-x-auto mb-4 font-mono text-sm;
+}
+
+.ProseMirror pre code {
+  @apply bg-transparent p-0;
+}
+
+.ProseMirror blockquote {
+  @apply border-l-4 border-muted-foreground/30 pl-4 italic my-4;
+}
+
+.ProseMirror ul {
+  @apply list-disc pl-6 mb-4;
+}
+
+.ProseMirror ol {
+  @apply list-decimal pl-6 mb-4;
+}
+
+.ProseMirror li {
+  @apply mb-1;
+}
+
+.ProseMirror li > p {
+  @apply mb-0;
+}
+
+.ProseMirror hr {
+  @apply border-t border-border my-6;
+}
+
+.ProseMirror a {
+  @apply text-primary underline;
+}
+
+.ProseMirror img {
+  @apply max-w-full h-auto rounded-lg my-4;
+}
+
+.ProseMirror .placeholder {
+  @apply text-muted-foreground;
+}
+
+/* Drag handle styles */
+.ProseMirror .block-handle {
+  @apply absolute -left-8 top-1 opacity-0 cursor-grab transition-opacity;
+}
+
+.ProseMirror .block-handle:hover,
+.ProseMirror [data-dragging="true"] .block-handle {
+  @apply opacity-100;
+}
+
+/* Selection styles */
+.ProseMirror ::selection {
+  @apply bg-primary/20;
+}
+
+/* Focus styles */
+.ProseMirror-focused {
+  @apply outline-none;
+}
+
+/* Slash menu styles */
+.slash-menu {
+  @apply bg-popover border border-border rounded-lg shadow-lg p-1 min-w-[200px];
+}
+
+.slash-menu-item {
+  @apply px-3 py-2 rounded cursor-pointer flex items-center gap-2;
+}
+
+.slash-menu-item:hover,
+.slash-menu-item[data-selected="true"] {
+  @apply bg-accent;
+}
+
+.slash-menu-item-icon {
+  @apply w-5 h-5 text-muted-foreground;
+}
+
+.slash-menu-item-label {
+  @apply font-medium;
+}
+
+.slash-menu-item-description {
+  @apply text-xs text-muted-foreground;
+}
