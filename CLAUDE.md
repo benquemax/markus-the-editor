@@ -57,10 +57,47 @@ Before considering work complete, run:
 
 ## Tech Stack
 
-- Electron 28+ (desktop shell)
+- Electron 31+ (desktop shell)
 - React 18 (UI)
 - ProseMirror (rich text editing)
 - TypeScript
 - Vite (bundling)
 - Tailwind CSS (styling)
 - Vitest (testing)
+
+## Deployment and Releases
+
+### Release Workflow
+
+Use the `/publish-new-version` command to start the release process. This will guide you through:
+
+1. **Analyzing changes** - Review commits since the last release tag
+2. **Determining version** - Choose appropriate semver bump (major/minor/patch)
+3. **Writing release notes** - Create user-friendly changelog
+4. **Running the release script** - Automate the entire release
+
+### Release Script
+
+The automated release script is at `scripts/release.sh`. It handles:
+- Version update in package.json
+- Running all quality checks (lint, typecheck, tests, build)
+- Building AppImage
+- Creating git tag and pushing to GitHub
+- Creating GitHub release with AppImage attached
+- Updating and publishing to AUR
+
+Usage:
+```bash
+./scripts/release.sh <version> "<release_notes>"
+```
+
+### Distribution Channels
+
+- **GitHub Releases**: AppImage downloads at https://github.com/erkkimon/markus-the-editor/releases
+- **AUR**: `markus-bin` package for Arch Linux users
+
+### AUR Package
+
+The AUR package files are maintained in two locations:
+- `aur/PKGBUILD` - Source of truth in main repo (updated by release script)
+- `mnt/markus-bin/` - Cloned AUR repo for publishing (managed by release script)
