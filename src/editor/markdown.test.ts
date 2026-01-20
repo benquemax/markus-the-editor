@@ -335,6 +335,181 @@ describe('Markdown Serializer', () => {
   })
 })
 
+describe('Image Parser', () => {
+  it('should parse standard markdown images', () => {
+    const doc = markdownParser.parse('![alt text](image.png)')
+    expect(doc).toBeDefined()
+    const paragraph = doc?.firstChild
+    expect(paragraph?.type.name).toBe('paragraph')
+    const image = paragraph?.firstChild
+    expect(image?.type.name).toBe('image')
+    expect(image?.attrs.src).toBe('image.png')
+    expect(image?.attrs.alt).toBe('alt text')
+  })
+
+  it('should parse markdown images with title', () => {
+    const doc = markdownParser.parse('![alt](image.png "title text")')
+    expect(doc).toBeDefined()
+    const paragraph = doc?.firstChild
+    const image = paragraph?.firstChild
+    expect(image?.attrs.src).toBe('image.png')
+    expect(image?.attrs.title).toBe('title text')
+  })
+
+  it('should parse HTML img tags with align attribute', () => {
+    const doc = markdownParser.parse('<img src="image.png" align="center" />')
+    expect(doc).toBeDefined()
+    const paragraph = doc?.firstChild
+    const image = paragraph?.firstChild
+    expect(image?.type.name).toBe('image')
+    expect(image?.attrs.src).toBe('image.png')
+    expect(image?.attrs.align).toBe('center')
+  })
+
+  it('should parse HTML img tags with width attribute', () => {
+    const doc = markdownParser.parse('<img src="image.png" width="50%" />')
+    expect(doc).toBeDefined()
+    const paragraph = doc?.firstChild
+    const image = paragraph?.firstChild
+    expect(image?.type.name).toBe('image')
+    expect(image?.attrs.width).toBe(50)
+  })
+
+  it('should parse HTML img tags with both align and width', () => {
+    const doc = markdownParser.parse('<img src="image.png" alt="my image" align="left" width="75%" />')
+    expect(doc).toBeDefined()
+    const paragraph = doc?.firstChild
+    const image = paragraph?.firstChild
+    expect(image?.attrs.src).toBe('image.png')
+    expect(image?.attrs.alt).toBe('my image')
+    expect(image?.attrs.align).toBe('left')
+    expect(image?.attrs.width).toBe(75)
+  })
+
+  it('should parse HTML img tags with data-align attribute', () => {
+    const doc = markdownParser.parse('<img src="image.png" data-align="right" />')
+    expect(doc).toBeDefined()
+    const paragraph = doc?.firstChild
+    const image = paragraph?.firstChild
+    expect(image?.attrs.align).toBe('right')
+  })
+})
+
+describe('Image Serializer', () => {
+  it('should serialize standard images to markdown syntax', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.nodes.image.create({ src: 'image.png', alt: 'alt text' })
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('![alt text](image.png)')
+  })
+
+  it('should serialize images with title to markdown syntax', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.nodes.image.create({ src: 'image.png', alt: 'alt', title: 'my title' })
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('![alt](image.png "my title")')
+  })
+
+  it('should serialize images with align to HTML', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.nodes.image.create({ src: 'image.png', align: 'center' })
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('<img')
+    expect(markdown).toContain('src="image.png"')
+    expect(markdown).toContain('align="center"')
+  })
+
+  it('should serialize images with width to HTML', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.nodes.image.create({ src: 'image.png', width: 50 })
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('<img')
+    expect(markdown).toContain('width="50%"')
+  })
+
+  it('should serialize images with both align and width to HTML', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.nodes.image.create({ src: 'image.png', alt: 'my image', align: 'left', width: 75 })
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('<img')
+    expect(markdown).toContain('src="image.png"')
+    expect(markdown).toContain('alt="my image"')
+    expect(markdown).toContain('align="left"')
+    expect(markdown).toContain('width="75%"')
+  })
+
+  it('should use markdown syntax for default align/width', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.paragraph.create(null, [
+        schema.nodes.image.create({ src: 'image.png', align: 'inline', width: 100 })
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('![](image.png)')
+    expect(markdown).not.toContain('<img')
+  })
+})
+
+describe('Image Round-trip Tests', () => {
+  it('should preserve standard images through round-trip', () => {
+    const original = '![alt text](folder/image.png)'
+    const doc = markdownParser.parse(original)
+    const serialized = markdownSerializer.serialize(doc!)
+    expect(serialized.trim()).toBe(original)
+  })
+
+  it('should preserve HTML images with align through round-trip', () => {
+    const original = '<img src="image.png" align="center" />'
+    const doc = markdownParser.parse(original)
+    const serialized = markdownSerializer.serialize(doc!)
+    expect(serialized).toContain('src="image.png"')
+    expect(serialized).toContain('align="center"')
+  })
+
+  it('should preserve HTML images with width through round-trip', () => {
+    const original = '<img src="image.png" width="50%" />'
+    const doc = markdownParser.parse(original)
+    const serialized = markdownSerializer.serialize(doc!)
+    expect(serialized).toContain('src="image.png"')
+    expect(serialized).toContain('width="50%"')
+  })
+
+  it('should preserve images mixed with other content', () => {
+    const original = `# Title
+
+Some text.
+
+<img src="photo.jpg" align="right" width="40%" />
+
+More text after image.`
+
+    const doc = markdownParser.parse(original)
+    const serialized = markdownSerializer.serialize(doc!)
+
+    expect(serialized).toContain('# Title')
+    expect(serialized).toContain('Some text.')
+    expect(serialized).toContain('src="photo.jpg"')
+    expect(serialized).toContain('align="right"')
+    expect(serialized).toContain('width="40%"')
+    expect(serialized).toContain('More text after image.')
+  })
+})
+
 describe('Table Round-trip Tests', () => {
   it('should preserve table structure through parse/serialize cycle', () => {
     const original = `| Name | Age |

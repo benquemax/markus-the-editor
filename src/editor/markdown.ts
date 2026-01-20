@@ -9,8 +9,9 @@ import MarkdownIt from 'markdown-it'
 import { schema } from './schema'
 import { Mark, Node } from 'prosemirror-model'
 
+// Enable HTML parsing in markdown-it to support HTML img tags with align/width attributes
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const md = new (MarkdownIt as any)()
+const md = new (MarkdownIt as any)({ html: true })
 
 // Base parser without table support - we'll wrap it to add table handling
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -115,14 +116,117 @@ function parseTableTokens(tokens: any[]): Node | null {
 }
 
 /**
- * Custom markdown parser that handles tables specially.
+ * Parse an HTML img tag and extract attributes.
+ * Returns null if the string is not a valid img tag.
+ */
+function parseHtmlImgTag(html: string): { src: string; alt?: string; title?: string; align?: string; width?: number } | null {
+  // Match <img ... /> or <img ...>
+  const imgMatch = html.match(/<img\s+([^>]*)\/?\s*>/i)
+  if (!imgMatch) return null
+
+  const attrsStr = imgMatch[1]
+
+  // Extract src attribute (required)
+  const srcMatch = attrsStr.match(/src=["']([^"']+)["']/)
+  if (!srcMatch) return null
+
+  const result: { src: string; alt?: string; title?: string; align?: string; width?: number } = {
+    src: srcMatch[1]
+  }
+
+  // Extract optional attributes
+  const altMatch = attrsStr.match(/alt=["']([^"']*)["']/)
+  if (altMatch) result.alt = altMatch[1]
+
+  const titleMatch = attrsStr.match(/title=["']([^"']*)["']/)
+  if (titleMatch) result.title = titleMatch[1]
+
+  const alignMatch = attrsStr.match(/(?:data-)?align=["']([^"']*)["']/)
+  if (alignMatch) result.align = alignMatch[1]
+
+  const widthMatch = attrsStr.match(/(?:data-)?width=["'](\d+)%?["']/)
+  if (widthMatch) result.width = parseInt(widthMatch[1], 10)
+
+  return result
+}
+
+/**
+ * Pre-process markdown to extract HTML img tags and convert to standard markdown.
+ * Returns the processed content and a map of src -> extra attributes (align, width).
+ */
+function preprocessHtmlImages(content: string): { content: string; imgAttrs: Map<string, { align?: string; width?: number }> } {
+  const imgAttrs = new Map<string, { align?: string; width?: number }>()
+
+  // Match HTML img tags (self-closing or not)
+  const htmlImgRegex = /<img\s+[^>]*>/gi
+  const processed = content.replace(htmlImgRegex, (match) => {
+    const parsed = parseHtmlImgTag(match)
+    if (!parsed) return match // Keep original if can't parse
+
+    // Store extra attributes if they have non-default values
+    if ((parsed.align && parsed.align !== 'inline') || (parsed.width && parsed.width !== 100)) {
+      imgAttrs.set(parsed.src, {
+        align: parsed.align,
+        width: parsed.width
+      })
+    }
+
+    // Convert to standard markdown image syntax
+    const alt = parsed.alt || ''
+    const title = parsed.title ? ` "${parsed.title}"` : ''
+    return `![${alt}](${parsed.src}${title})`
+  })
+
+  return { content: processed, imgAttrs }
+}
+
+/**
+ * Walk a ProseMirror document tree and update image nodes with extra attributes.
+ */
+function applyImageAttributes(doc: Node, imgAttrs: Map<string, { align?: string; width?: number }>): Node {
+  if (imgAttrs.size === 0) return doc
+
+  // Recursively transform the document
+  function transform(node: Node): Node {
+    if (node.type.name === 'image') {
+      const attrs = imgAttrs.get(node.attrs.src)
+      if (attrs) {
+        return node.type.create({
+          ...node.attrs,
+          align: attrs.align || node.attrs.align,
+          width: attrs.width || node.attrs.width
+        })
+      }
+      return node
+    }
+
+    if (node.isLeaf) return node
+
+    // Transform children
+    const children: Node[] = []
+    node.forEach((child) => {
+      children.push(transform(child))
+    })
+
+    return node.type.create(node.attrs, children, node.marks)
+  }
+
+  return transform(doc)
+}
+
+/**
+ * Custom markdown parser that handles tables and HTML img tags specially.
  * Tables require custom handling because prosemirror-markdown's standard
  * block handlers don't properly wrap inline cell content in paragraphs.
+ * HTML img tags are handled to support align/width attributes.
  */
 export const markdownParser = {
   parse(content: string): Node | null {
-    // First, check if there are tables and parse them specially
-    const tokens = md.parse(content, {})
+    // Pre-process to extract HTML img tags and their attributes
+    const { content: processedContent, imgAttrs } = preprocessHtmlImages(content)
+
+    // Parse with the processed content
+    const tokens = md.parse(processedContent, {})
 
     // Find table ranges and parse them separately
     const tableRanges: { start: number; end: number }[] = []
@@ -138,7 +242,8 @@ export const markdownParser = {
 
     // If no tables, use standard parser
     if (tableRanges.length === 0) {
-      return baseMarkdownParser.parse(content)
+      const doc = baseMarkdownParser.parse(processedContent)
+      return doc ? applyImageAttributes(doc, imgAttrs) : null
     }
 
     // Build document with tables
@@ -152,7 +257,7 @@ export const markdownParser = {
         const beforeTokens = tokens.slice(lastEnd, range.start)
         if (beforeTokens.length > 0) {
           // Reconstruct markdown for non-table content
-          const beforeContent = getContentFromTokens(content, tokens, lastEnd, range.start)
+          const beforeContent = getContentFromTokens(processedContent, tokens, lastEnd, range.start)
           if (beforeContent.trim()) {
             const doc = baseMarkdownParser.parse(beforeContent)
             if (doc) {
@@ -174,7 +279,7 @@ export const markdownParser = {
 
     // Parse content after last table
     if (lastEnd < tokens.length) {
-      const afterContent = getContentFromTokens(content, tokens, lastEnd, tokens.length)
+      const afterContent = getContentFromTokens(processedContent, tokens, lastEnd, tokens.length)
       if (afterContent.trim()) {
         const doc = baseMarkdownParser.parse(afterContent)
         if (doc) {
@@ -187,7 +292,8 @@ export const markdownParser = {
       return schema.nodes.doc.create(null, schema.nodes.paragraph.create())
     }
 
-    return schema.nodes.doc.create(null, children)
+    const doc = schema.nodes.doc.create(null, children)
+    return applyImageAttributes(doc, imgAttrs)
   }
 }
 
@@ -257,8 +363,27 @@ export const markdownSerializer = new MarkdownSerializer({
     state.closeBlock(node)
   },
   image(state, node) {
-    state.write('![' + state.esc(node.attrs.alt || '') + '](' + node.attrs.src +
-      (node.attrs.title ? ' "' + node.attrs.title.replace(/"/g, '\\"') + '"' : '') + ')')
+    const { src, alt, title, align, width, relativeSrc } = node.attrs
+    const hasCustomAttrs = (align && align !== 'inline') || (width && width !== 100)
+    // Use relativeSrc for markdown output if available, otherwise fall back to src
+    // This allows src to be a file:// URL for display while keeping relative paths in markdown
+    const markdownSrc = relativeSrc || src
+
+    if (hasCustomAttrs) {
+      // Output HTML img tag to preserve align/width attributes
+      let html = '<img'
+      html += ` src="${markdownSrc}"`
+      if (alt) html += ` alt="${alt.replace(/"/g, '&quot;')}"`
+      if (title) html += ` title="${title.replace(/"/g, '&quot;')}"`
+      if (align && align !== 'inline') html += ` align="${align}"`
+      if (width && width !== 100) html += ` width="${width}%"`
+      html += ' />'
+      state.write(html)
+    } else {
+      // Standard markdown image syntax for default images
+      state.write('![' + state.esc(alt || '') + '](' + markdownSrc +
+        (title ? ' "' + title.replace(/"/g, '\\"') + '"' : '') + ')')
+    }
   },
   hard_break(state, node, parent, index) {
     for (let i = index + 1; i < parent.childCount; i++) {

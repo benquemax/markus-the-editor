@@ -61,7 +61,8 @@
 
 /* Editor specific styles */
 .ProseMirror {
-  @apply outline-none min-h-full p-4;
+  @apply outline-none min-h-full py-4 pr-4;
+  padding-left: 2.5rem; /* Extra left padding for collapse indicators */
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -144,6 +145,43 @@
 
 .ProseMirror img {
   @apply max-w-full h-auto rounded-lg my-4;
+  cursor: pointer;
+}
+
+/* Image alignment styles */
+.ProseMirror img[data-align="left"] {
+  float: left;
+  margin-right: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror img[data-align="right"] {
+  float: right;
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.ProseMirror img[data-align="center"] {
+  display: block;
+  margin-left: auto;
+  margin-right: auto;
+  float: none;
+}
+
+/* Images with custom width (< 100%) but no explicit alignment should float left
+   to allow text to flow around them. This makes the image only take up its
+   actual area without creating unnecessary vertical space. */
+.ProseMirror img[data-width]:not([data-align]) {
+  float: left;
+  margin-top: 0;
+  margin-right: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Floated images (left/right aligned or with custom width) should not add top margin */
+.ProseMirror img[data-align="left"],
+.ProseMirror img[data-align="right"] {
+  margin-top: 0;
 }
 
 .ProseMirror .placeholder {
@@ -276,73 +314,71 @@
 /* Collapse indicators - clickable arrows for collapsible sections */
 .collapse-indicator {
   @apply inline-flex items-center justify-center cursor-pointer select-none;
-  @apply text-muted-foreground hover:text-foreground transition-colors;
-  width: 1em;
-  font-size: 0.7em;
-  margin-right: 0.3em;
+  @apply transition-all;
+  color: hsl(var(--muted-foreground) / 0.4);
+  font-size: 0.5em;
+  width: 1.2em;
+  margin-left: -2em;
+  margin-right: 0.5em;
+  user-select: none;
 }
 
 .collapse-indicator:hover {
-  @apply text-primary;
+  color: hsl(var(--primary) / 0.8);
 }
 
-/* Heading collapse indicator - positioned in the margin */
-.collapse-indicator-heading {
-  @apply absolute;
-  left: -1.5em;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+/* Collapsed state indicator is more visible */
+.collapse-indicator.collapsed {
+  color: hsl(var(--primary) / 0.6);
 }
 
-/* Show heading indicator on hover over the heading or when collapsed */
-.collapsible-heading {
-  @apply relative;
-}
-
-.collapsible-heading:hover .collapse-indicator-heading,
-.collapsible-heading.is-collapsed .collapse-indicator-heading,
-.collapse-indicator-heading:hover {
-  opacity: 1;
-}
-
-/* Always show indicator when section is collapsed */
-.collapsible-heading.is-collapsed .collapse-indicator-heading {
-  opacity: 1;
-  @apply text-primary;
-}
-
-/* List item collapse indicator */
+/* List item indicators need different positioning */
 .collapse-indicator-list {
-  @apply absolute;
-  left: -1.2em;
-  top: 0.15em;
-  opacity: 0;
-  transition: opacity 0.15s ease;
+  margin-left: -1.5em;
 }
 
-/* Show list indicator on hover or when collapsed */
-.collapsible-list-item {
-  @apply relative;
-}
-
-.collapsible-list-item:hover > .collapse-indicator-list,
-.collapsible-list-item.is-collapsed > .collapse-indicator-list,
-.collapse-indicator-list:hover {
-  opacity: 1;
-}
-
-.collapsible-list-item.is-collapsed > .collapse-indicator-list {
-  opacity: 1;
-  @apply text-primary;
-}
-
-/* Visual indicator that content is collapsed */
-.collapsible-heading.is-collapsed,
-.collapsible-list-item.is-collapsed {
-  @apply border-l-2 border-primary/30 pl-2 -ml-2;
-}
 
 /* Hidden collapsed content */
 .collapsed-content {
   display: none !important;
+}
+
+/* Image drop indicator - horizontal line shown when dragging images */
+.image-drop-indicator {
+  height: 3px;
+  background: hsl(var(--primary));
+  border-radius: 2px;
+  pointer-events: none;
+  z-index: 100;
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.5);
+}
+
+/* Image edit button - appears on hover */
+.image-edit-btn {
+  @apply flex items-center justify-center w-6 h-6;
+  @apply bg-background border border-border rounded shadow-md;
+  @apply text-muted-foreground hover:text-foreground hover:bg-accent;
+  @apply cursor-pointer transition-all;
+}
+
+.image-edit-btn:hover {
+  @apply border-primary scale-110;
+}
+
+/* Image edit popover */
+.image-edit-popover {
+  @apply bg-popover border border-border rounded-lg shadow-xl p-3 w-48;
+}
+
+/* Width slider custom styles */
+.image-edit-popover input[type="range"] {
+  @apply h-2 bg-accent rounded-lg appearance-none cursor-pointer;
+}
+
+.image-edit-popover input[type="range"]::-webkit-slider-thumb {
+  @apply appearance-none w-4 h-4 bg-primary rounded-full cursor-pointer;
+}
+
+.image-edit-popover input[type="range"]::-moz-range-thumb {
+  @apply w-4 h-4 bg-primary rounded-full cursor-pointer border-none;
 }

@@ -23,12 +23,12 @@ interface CollapseState {
 export const collapsePluginKey = new PluginKey<CollapseState>('collapse')
 
 /**
- * Generate a stable ID for a collapsible node.
- * Uses node type + first few chars of text content for stability across edits.
+ * Generate a unique ID for a collapsible node.
+ * Uses node type + position + text preview for uniqueness.
  */
 function getCollapseId(node: Node, pos: number): CollapseId {
-  const textPreview = node.textContent.slice(0, 30).replace(/\s+/g, ' ')
-  return `${node.type.name}-${textPreview || pos}`
+  const textPreview = node.textContent.slice(0, 20).replace(/\s+/g, ' ')
+  return `${node.type.name}-${pos}-${textPreview}`
 }
 
 /**
@@ -77,8 +77,8 @@ function createDecorations(state: EditorState, collapsed: Set<CollapseId>): Deco
       const isCollapsed = collapsed.has(collapseId)
       const level = node.attrs.level
 
-      // Add collapse indicator widget
-      const indicatorWidget = Decoration.widget(offset, (view) => {
+      // Add collapse indicator widget inside the heading (at start of content)
+      const indicatorWidget = Decoration.widget(offset + 1, (view) => {
         const indicator = document.createElement('span')
         indicator.className = `collapse-indicator collapse-indicator-heading ${isCollapsed ? 'collapsed' : 'expanded'}`
         indicator.textContent = isCollapsed ? '▶' : '▼'
@@ -102,10 +102,16 @@ function createDecorations(state: EditorState, collapsed: Set<CollapseId>): Deco
     }
 
     // Check if this node should be hidden (inside a collapsed heading section)
-    if (node.type !== schema.nodes.heading) {
-      for (const [headingPos, { endPos }] of collapsedHeadings) {
-        const sectionStart = headingPos + doc.nodeAt(headingPos)!.nodeSize
-        if (offset >= sectionStart && offset < endPos) {
+    for (const [headingPos, { level: collapsedLevel, endPos }] of collapsedHeadings) {
+      const sectionStart = headingPos + doc.nodeAt(headingPos)!.nodeSize
+      if (offset >= sectionStart && offset < endPos) {
+        // Hide this node if:
+        // - It's not a heading, OR
+        // - It's a heading with a lower priority (higher level number) than the collapsed heading
+        const shouldHide = node.type !== schema.nodes.heading ||
+          node.attrs.level > collapsedLevel
+
+        if (shouldHide) {
           decorations.push(
             Decoration.node(offset, offset + node.nodeSize, {
               class: 'collapsed-content'

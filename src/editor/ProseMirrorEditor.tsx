@@ -20,9 +20,13 @@ import { createPlaceholderPlugin } from './plugins/placeholder'
 import { createDeletionConfirmPlugin } from './plugins/deletionConfirm'
 import { createTableControlsPlugin, TableControlsState } from './plugins/tableControls'
 import { createCollapsePlugin } from './plugins/collapse'
+import { createImagePlugin, ImageHoverState, PendingImage, insertImage } from './plugins/imagePlugin'
 import { SlashMenu } from '../components/SlashMenu'
 import { Toast } from '../components/Toast'
 import { TableControls } from '../components/TableControls'
+import { ImageFilenameDialog } from '../components/ImageFilenameDialog'
+import { ImageEditPopover } from '../components/ImageEditPopover'
+import { ImageLightbox } from '../components/ImageLightbox'
 
 export interface ProseMirrorEditorHandle {
   getContent: () => string
@@ -65,6 +69,21 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       colPositions: []
     })
 
+    // Image handling state
+    const [imageHoverState, setImageHoverState] = useState<ImageHoverState>({
+      active: false,
+      imagePos: -1,
+      src: '',
+      align: 'inline',
+      width: 100,
+      imageRect: null
+    })
+    const [pendingImage, setPendingImage] = useState<PendingImage | null>(null)
+    const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+    const [dropIndicator, setDropIndicator] = useState<{ top: number; left: number; width: number } | null>(null)
+    // Track insert position for pending image
+    const pendingImagePosRef = useRef<number>(0)
+
     const getContent = useCallback(() => {
       if (!viewRef.current) return ''
       return markdownSerializer.serialize(viewRef.current.state.doc)
@@ -106,6 +125,37 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       // Wrapper that calls the ref to always get latest onSave
       const handleSave = () => onSaveRef.current?.()
 
+      // Image drop/paste handler
+      const handleImageDrop = (image: PendingImage) => {
+        pendingImagePosRef.current = image.insertPos
+        setPendingImage(image)
+      }
+
+      // Get image context: existing files and document base name
+      const getImageContext = async (): Promise<{ files: string[]; docBaseName: string | null }> => {
+        try {
+          const [filesResult, folderResult] = await Promise.all([
+            window.electron.image.listExisting(),
+            window.electron.image.getFolderPath()
+          ])
+
+          // Extract document base name from docPath (e.g., "/path/to/article.md" -> "article")
+          let docBaseName: string | null = null
+          if (folderResult.docPath) {
+            const filename = folderResult.docPath.split('/').pop() || ''
+            const dotIndex = filename.lastIndexOf('.')
+            docBaseName = dotIndex > 0 ? filename.slice(0, dotIndex) : filename
+          }
+
+          return {
+            files: filesResult.files || [],
+            docBaseName
+          }
+        } catch {
+          return { files: [], docBaseName: null }
+        }
+      }
+
       const plugins = [
         buildInputRules(),
         // Slash menu must be before keymap so it can intercept Enter/Arrow keys
@@ -124,7 +174,9 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         // Table controls plugin tracks cursor position in tables for UI controls
         createTableControlsPlugin(setTableControlsState),
         // Collapse plugin for collapsible headings and list items
-        createCollapsePlugin()
+        createCollapsePlugin(),
+        // Image plugin handles drag/drop, paste, and hover detection
+        createImagePlugin(handleImageDrop, setImageHoverState, getImageContext, setDropIndicator)
       ]
 
       const state = EditorState.create({
@@ -184,9 +236,47 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       item.action(view)
     }, [])
 
+    // Handle image save from filename dialog
+    // displaySrc is the file:// URL for display, relativePath is for markdown serialization
+    const handleImageSave = useCallback((displaySrc: string, relativePath: string) => {
+      if (!viewRef.current) return
+      insertImage(viewRef.current, pendingImagePosRef.current, displaySrc, relativePath)
+      setPendingImage(null)
+      viewRef.current.focus()
+    }, [])
+
+    // Handle image dialog cancel
+    const handleImageCancel = useCallback(() => {
+      setPendingImage(null)
+      viewRef.current?.focus()
+    }, [])
+
+    // Handle lightbox open from edit popover
+    const handleLightboxOpen = useCallback((src: string) => {
+      setLightboxSrc(src)
+    }, [])
+
+    // Handle lightbox close
+    const handleLightboxClose = useCallback(() => {
+      setLightboxSrc(null)
+      viewRef.current?.focus()
+    }, [])
+
     return (
-      <div ref={containerRef} className="relative h-full">
-        <div ref={editorRef} className="h-full overflow-auto" />
+      <div ref={containerRef} className="relative h-full overflow-auto">
+        <div ref={editorRef} />
+        {/* Drop indicator line shown when dragging images */}
+        {dropIndicator && (
+          <div
+            className="image-drop-indicator"
+            style={{
+              position: 'absolute',
+              top: dropIndicator.top,
+              left: dropIndicator.left,
+              width: dropIndicator.width
+            }}
+          />
+        )}
         <TableControls
           state={tableControlsState}
           view={viewRef.current}
@@ -195,6 +285,21 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         <SlashMenu
           state={slashMenuState}
           onSelect={handleSlashMenuSelect}
+        />
+        <ImageEditPopover
+          state={imageHoverState}
+          view={viewRef.current}
+          containerRef={containerRef as React.RefObject<HTMLDivElement>}
+          onImageClick={handleLightboxOpen}
+        />
+        <ImageFilenameDialog
+          image={pendingImage}
+          onSave={handleImageSave}
+          onCancel={handleImageCancel}
+        />
+        <ImageLightbox
+          src={lightboxSrc}
+          onClose={handleLightboxClose}
         />
         <Toast />
       </div>

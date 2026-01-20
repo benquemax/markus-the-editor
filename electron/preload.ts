@@ -51,6 +51,37 @@ export interface ElectronAPI {
     onToggleSplitView: (callback: () => void) => () => void
     onOpenCommandPalette: (callback: () => void) => () => void
   }
+  image: {
+    save: (options: {
+      imageName: string
+      imageData: string
+      mimeType: string
+    }) => Promise<{
+      success: boolean
+      relativePath?: string
+      isTemp?: boolean
+      absolutePath?: string
+      error?: string
+    }>
+    listExisting: (pattern?: string) => Promise<{
+      success: boolean
+      files: string[]
+      error?: string
+    }>
+    moveFromTemp: (options: {
+      tempPaths: string[]
+      targetDocPath: string
+    }) => Promise<{
+      success: boolean
+      pathMap: Record<string, string>
+      error?: string
+    }>
+    getFolderPath: () => Promise<{
+      folder: string
+      isTemp: boolean
+      docPath: string | null
+    }>
+  }
 }
 
 const api: ElectronAPI = {
@@ -117,6 +148,12 @@ const api: ElectronAPI = {
       ipcRenderer.on('menu:openCommandPalette', handler)
       return () => ipcRenderer.removeListener('menu:openCommandPalette', handler)
     }
+  },
+  image: {
+    save: (options) => ipcRenderer.invoke('image:save', options),
+    listExisting: (pattern) => ipcRenderer.invoke('image:listExisting', pattern),
+    moveFromTemp: (options) => ipcRenderer.invoke('image:moveFromTemp', options),
+    getFolderPath: () => ipcRenderer.invoke('image:getFolderPath')
   }
 }
 

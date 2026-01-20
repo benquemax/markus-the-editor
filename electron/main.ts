@@ -1,7 +1,8 @@
-import { app, BrowserWindow, ipcMain, dialog, Menu, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Menu, shell, protocol, net } from 'electron'
 import path from 'path'
 import fs from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, mkdirSync } from 'fs'
+import os from 'os'
 import { createMenu } from './menu'
 import { setupFileWatcher, stopFileWatcher } from './fileWatcher'
 import { setupGitHandlers } from './git'
@@ -284,7 +285,171 @@ ipcMain.handle('file:openPath', async (_, filePath: string) => {
   return { success: false, error: 'File not found' }
 })
 
+// Image handling IPC handlers
+
+/**
+ * Get the image folder path for a document.
+ * For saved documents: <filename>/ (e.g., "notes.md" -> "notes/")
+ * For unsaved documents: system temp folder
+ */
+function getImageFolderPath(docPath: string | null): { folder: string; isTemp: boolean } {
+  if (docPath) {
+    // Use document name without extension as folder name
+    const dir = path.dirname(docPath)
+    const basename = path.basename(docPath, path.extname(docPath))
+    return { folder: path.join(dir, basename), isTemp: false }
+  }
+  // Use temp folder for unsaved documents
+  return { folder: path.join(os.tmpdir(), 'markus-images'), isTemp: true }
+}
+
+/**
+ * Save an image file to the appropriate folder.
+ * Returns the relative path for the markdown image reference.
+ */
+ipcMain.handle('image:save', async (_, options: {
+  imageName: string
+  imageData: string // base64 encoded
+  mimeType: string
+}) => {
+  try {
+    const { folder, isTemp } = getImageFolderPath(currentFilePath)
+
+    // Create folder if it doesn't exist
+    if (!existsSync(folder)) {
+      mkdirSync(folder, { recursive: true })
+    }
+
+    // Decode base64 image data
+    const buffer = Buffer.from(options.imageData, 'base64')
+
+    // Save the image
+    const imagePath = path.join(folder, options.imageName)
+    await fs.writeFile(imagePath, buffer)
+
+    // Return the relative path for markdown
+    let relativePath: string
+    if (isTemp) {
+      // For temp images, return absolute path (will be updated when document is saved)
+      relativePath = imagePath
+    } else {
+      // For saved documents, return path relative to document folder
+      const basename = path.basename(currentFilePath!, path.extname(currentFilePath!))
+      relativePath = `${basename}/${options.imageName}`
+    }
+
+    return { success: true, relativePath, isTemp, absolutePath: imagePath }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
+/**
+ * List existing images in the document's image folder.
+ * Used for auto-numbering (e.g., image-1.png, image-2.png).
+ */
+ipcMain.handle('image:listExisting', async (_, pattern?: string) => {
+  try {
+    const { folder } = getImageFolderPath(currentFilePath)
+
+    if (!existsSync(folder)) {
+      return { success: true, files: [] }
+    }
+
+    const files = await fs.readdir(folder)
+
+    // Filter by pattern if provided (e.g., "image-*.png")
+    let filtered = files
+    if (pattern) {
+      const regex = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$')
+      filtered = files.filter(f => regex.test(f))
+    }
+
+    return { success: true, files: filtered }
+  } catch (error) {
+    return { success: false, error: String(error), files: [] }
+  }
+})
+
+/**
+ * Move images from temp folder to final location when document is saved.
+ * Returns a map of old paths to new paths for updating references in the document.
+ */
+ipcMain.handle('image:moveFromTemp', async (_, options: {
+  tempPaths: string[]
+  targetDocPath: string
+}) => {
+  try {
+    const dir = path.dirname(options.targetDocPath)
+    const basename = path.basename(options.targetDocPath, path.extname(options.targetDocPath))
+    const targetFolder = path.join(dir, basename)
+
+    // Create target folder if it doesn't exist
+    if (!existsSync(targetFolder)) {
+      mkdirSync(targetFolder, { recursive: true })
+    }
+
+    const pathMap: Record<string, string> = {}
+
+    for (const tempPath of options.tempPaths) {
+      if (!existsSync(tempPath)) continue
+
+      const imageName = path.basename(tempPath)
+      const newPath = path.join(targetFolder, imageName)
+
+      // Move the file
+      await fs.copyFile(tempPath, newPath)
+      await fs.unlink(tempPath)
+
+      // Map old path to new relative path
+      pathMap[tempPath] = `${basename}/${imageName}`
+    }
+
+    return { success: true, pathMap }
+  } catch (error) {
+    return { success: false, error: String(error), pathMap: {} }
+  }
+})
+
+/**
+ * Get the image folder path for the current document.
+ */
+ipcMain.handle('image:getFolderPath', async () => {
+  const { folder, isTemp } = getImageFolderPath(currentFilePath)
+  return { folder, isTemp, docPath: currentFilePath }
+})
+
+// Register custom protocol for serving local images
+// This allows the renderer to load images from the file system securely
+// Usage: local-image:///path/to/image.png
+//
+// IMPORTANT: This protocol is essential for displaying local images in the editor.
+// Without it, images saved to the filesystem cannot be displayed because Electron's
+// renderer process blocks file:// URLs for security reasons. Do not remove or modify
+// the protocol name without updating all references in:
+// - src/components/ImageFilenameDialog.tsx (where display URLs are constructed)
+// - index.html (CSP img-src directive)
+// - src/editor/markdown.ts (if path resolution is added for existing images)
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'local-image',
+  privileges: {
+    secure: true,
+    supportFetchAPI: true,
+    bypassCSP: true,
+    stream: true
+  }
+}])
+
 app.whenReady().then(() => {
+  // Handle the custom local-image protocol
+  // Converts local-image:// URLs to file:// URLs and serves the content
+  protocol.handle('local-image', (request) => {
+    // Extract the file path from the URL
+    // local-image:///path/to/file.png -> /path/to/file.png
+    const filePath = decodeURIComponent(request.url.replace('local-image://', ''))
+    return net.fetch(`file://${filePath}`)
+  })
+
   createWindow()
 
   // Handle file opened from command line on Linux (file manager, terminal, etc.)

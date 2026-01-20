@@ -127,7 +127,15 @@ const nodes: Record<string, NodeSpec> = {
     attrs: {
       src: {},
       alt: { default: null },
-      title: { default: null }
+      title: { default: null },
+      // Alignment: 'inline' (default, flows with text), 'left'/'right' (float), 'center' (block)
+      align: { default: 'inline' },
+      // Width as percentage (1-100), 100 means full width
+      width: { default: 100 },
+      // Relative source path for markdown serialization (optional)
+      // When set, this is used in markdown output instead of src
+      // This allows src to be a file:// URL for display while preserving relative paths
+      relativeSrc: { default: null }
     },
     group: 'inline',
     draggable: true,
@@ -135,16 +143,39 @@ const nodes: Record<string, NodeSpec> = {
       tag: 'img[src]',
       getAttrs(node) {
         const element = node as HTMLElement
+        const alignAttr = element.getAttribute('align') || element.getAttribute('data-align')
+        const widthAttr = element.getAttribute('width') || element.getAttribute('data-width')
+
+        // Parse width - handle both "50%" and "50" formats
+        let width = 100
+        if (widthAttr) {
+          const parsed = parseInt(widthAttr.replace('%', ''), 10)
+          if (!isNaN(parsed) && parsed >= 1 && parsed <= 100) {
+            width = parsed
+          }
+        }
+
         return {
           src: element.getAttribute('src'),
           alt: element.getAttribute('alt'),
-          title: element.getAttribute('title')
+          title: element.getAttribute('title'),
+          align: alignAttr || 'inline',
+          width
         }
       }
     }],
     toDOM(node) {
-      const { src, alt, title } = node.attrs
-      return ['img', { src, alt, title }]
+      const { src, alt, title, align, width } = node.attrs
+      const attrs: Record<string, string> = { src }
+      if (alt) attrs.alt = alt
+      if (title) attrs.title = title
+      // Add data attributes for CSS styling
+      if (align && align !== 'inline') attrs['data-align'] = align
+      if (width && width !== 100) {
+        attrs['data-width'] = String(width)
+        attrs.style = `width: ${width}%`
+      }
+      return ['img', attrs]
     }
   },
 
