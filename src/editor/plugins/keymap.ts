@@ -10,6 +10,7 @@ import { schema } from '../schema'
 import { EditorState, Transaction } from 'prosemirror-state'
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list'
 import { goToNextCell } from 'prosemirror-tables'
+import { handleDeletionBackspace } from './deletionConfirm'
 
 type Command = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean
 
@@ -99,8 +100,10 @@ export function buildKeymap(onSave?: () => void) {
   keys['Tab'] = chainCommands(goToNextCell(1), sinkListItem(schema.nodes.list_item))
   keys['Shift-Tab'] = chainCommands(goToNextCell(-1), liftListItem(schema.nodes.list_item))
 
-  // Backspace converts empty non-paragraph blocks to paragraph first
+  // Backspace: first check for double-backspace deletion (tables, blockquotes, code blocks),
+  // then convert empty non-paragraph blocks to paragraph, then default backspace
   keys['Backspace'] = chainCommands(
+    handleDeletionBackspace,
     backspaceToPlainBlock(),
     baseKeymap['Backspace']
   )

@@ -197,14 +197,18 @@
 }
 
 /* Table styles */
+.ProseMirror .tableWrapper {
+  @apply overflow-x-auto my-4;
+}
+
 .ProseMirror table {
-  @apply w-full border-collapse my-4;
+  @apply w-full border-collapse;
 }
 
 .ProseMirror th,
 .ProseMirror td {
   @apply border border-border px-3 py-2 text-left align-top;
-  min-width: 50px;
+  min-width: 8em;
 }
 
 .ProseMirror th {
@@ -229,4 +233,42 @@
 /* Table resize cursor */
 .ProseMirror.resize-cursor {
   cursor: col-resize;
+}
+
+/* Toast notification */
+.toast {
+  @apply fixed bottom-4 left-1/2 -translate-x-1/2 bg-foreground text-background px-4 py-2 rounded-lg shadow-lg text-sm z-50;
+  animation: toast-fade-in 0.15s ease-out;
+}
+
+@keyframes toast-fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Table control buttons - floating add/delete buttons around tables */
+.table-control-btn {
+  @apply flex items-center justify-center w-5 h-5 text-xs font-bold;
+  @apply bg-background border border-border rounded-full shadow-md;
+  @apply text-muted-foreground hover:text-foreground hover:bg-accent;
+  @apply cursor-pointer transition-all z-50;
+}
+
+.table-control-btn:hover {
+  @apply border-primary scale-110;
+}
+
+/* Delete table button - red styling */
+.table-delete-btn {
+  @apply bg-destructive/10 hover:bg-destructive/20 text-destructive border-destructive/30;
+}
+
+.table-delete-btn:hover {
+  @apply border-destructive;
 }

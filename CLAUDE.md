@@ -76,6 +76,7 @@ All four commands must pass without errors. A task is not complete until:
 
 ## Project Structure
 
+- `docs/` - Documentation for conventions and patterns (read when beginning a task)
 - `electron/` - Electron main process (main.ts, preload.ts, menu.ts, etc.)
 - `src/` - React renderer process
   - `src/editor/` - ProseMirror editor core (schema, markdown parser, plugins)
