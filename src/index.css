@@ -382,3 +382,135 @@
 .image-edit-popover input[type="range"]::-moz-range-thumb {
   @apply w-4 h-4 bg-primary rounded-full cursor-pointer border-none;
 }
+
+/* ==============================
+   Code Editor Styles
+   ============================== */
+
+/* Code editor FAB button */
+.code-editor-fab {
+  @apply fixed bottom-16 right-4 z-40;
+  @apply flex items-center justify-center w-12 h-12;
+  @apply bg-background border border-border rounded-full shadow-lg;
+  @apply text-muted-foreground hover:text-foreground hover:bg-accent;
+  @apply cursor-pointer transition-all;
+}
+
+.code-editor-fab:hover {
+  @apply border-primary scale-110;
+}
+
+.code-editor-fab.active {
+  @apply bg-primary text-primary-foreground border-primary;
+}
+
+.code-editor-fab.active:hover {
+  @apply bg-primary/90;
+}
+
+/* Code editor wrapper */
+.code-editor-wrapper {
+  @apply h-full flex flex-col;
+}
+
+/* Error state - red tint background */
+.code-editor-wrapper.has-errors {
+  background-color: hsl(0 84.2% 60.2% / 0.08);
+}
+
+.code-editor-wrapper.has-errors .cm-editor {
+  background-color: transparent;
+}
+
+/* Code editor container */
+.code-editor-container {
+  @apply flex-1;
+}
+
+.code-editor-container .cm-editor {
+  @apply h-full;
+}
+
+.code-editor-container .cm-scroller {
+  @apply overflow-auto;
+}
+
+/* Vim cursor styles */
+/* Normal mode - block cursor */
+.vim-normal .cm-cursor {
+  border-left: none !important;
+  background-color: hsl(var(--foreground) / 0.7);
+  width: 0.6em !important;
+}
+
+/* Insert mode - line cursor (default) */
+.vim-insert .cm-cursor {
+  border-left: 2px solid hsl(var(--foreground));
+  background: transparent;
+  width: auto !important;
+}
+
+/* Error status bar at bottom of code editor */
+.code-editor-error-bar {
+  @apply flex items-center gap-2 px-3 py-2;
+  @apply bg-destructive/10 text-destructive text-sm;
+  @apply border-t border-destructive/30;
+}
+
+.code-editor-error-bar .error-icon {
+  @apply flex-shrink-0;
+}
+
+.code-editor-error-bar .error-message {
+  @apply truncate;
+}
+
+/* Lint error highlighting */
+.cm-lintRange-error {
+  background-color: hsl(0 84.2% 60.2% / 0.15);
+  text-decoration: wavy underline hsl(0 84.2% 60.2%);
+  text-underline-offset: 3px;
+}
+
+/* Lint gutter marker */
+.cm-lint-marker-error {
+  content: "●";
+  color: hsl(0 84.2% 60.2%);
+}
+
+/* CodeMirror vim panel (status line) */
+.cm-panels {
+  @apply border-t border-border;
+}
+
+.cm-vim-panel input {
+  @apply bg-transparent outline-none;
+}
+
+/* Invalid markdown placeholder - shown when file has syntax errors */
+.invalid-markdown-placeholder {
+  @apply h-full flex items-center justify-center;
+  background-color: hsl(0 84.2% 60.2% / 0.05);
+}
+
+.invalid-markdown-content {
+  @apply text-center p-8 max-w-md;
+}
+
+.invalid-markdown-icon {
+  @apply text-6xl mb-4;
+  color: hsl(0 84.2% 60.2%);
+}
+
+.invalid-markdown-content h2 {
+  @apply text-xl font-semibold mb-2;
+  color: hsl(0 84.2% 60.2%);
+}
+
+.invalid-markdown-content p {
+  @apply text-muted-foreground mb-1;
+}
+
+.invalid-markdown-content p:last-child {
+  @apply mb-0;
+}

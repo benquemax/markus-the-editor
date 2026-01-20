@@ -3,8 +3,11 @@ import { ProseMirrorEditor, ProseMirrorEditorHandle } from './editor/ProseMirror
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { GitPanel } from './components/GitPanel'
-import { MarkdownPreview } from './components/MarkdownPreview'
+import { CodeEditor } from './components/CodeEditor'
+import { CodeEditorFab } from './components/CodeEditorFab'
 import { cn } from './lib/utils'
+import { markdownParser } from './editor/markdown'
+import { showToast } from './lib/toast'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -15,11 +18,22 @@ function App() {
   const [charCount, setCharCount] = useState(0)
   const [isDirty, setIsDirty] = useState(false)
   const [theme, setTheme] = useState<Theme>('system')
-  const [showSplitView, setShowSplitView] = useState(false)
+  const [showCodeEditor, setShowCodeEditor] = useState(false)
+  const [isMarkdownValid, setIsMarkdownValid] = useState(true)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [showGitPanel, setShowGitPanel] = useState(false)
   const [isGitRepo, setIsGitRepo] = useState(false)
   const editorRef = useRef<ProseMirrorEditorHandle>(null)
+
+  // Validate markdown content
+  const validateMarkdown = useCallback((content: string): boolean => {
+    try {
+      const doc = markdownParser.parse(content)
+      return doc !== null
+    } catch {
+      return false
+    }
+  }, [])
 
   // Apply theme
   useEffect(() => {
@@ -70,6 +84,8 @@ function App() {
       setContent('')
       setFilePath(null)
       setIsDirty(false)
+      setIsMarkdownValid(true)
+      setShowCodeEditor(false)
       editorRef.current?.setContent('')
     })
 
@@ -78,7 +94,19 @@ function App() {
       setContent(fileContent)
       setFilePath(path)
       setIsDirty(false)
-      editorRef.current?.setContent(fileContent)
+
+      // Validate markdown on file open
+      const isValid = validateMarkdown(fileContent)
+      setIsMarkdownValid(isValid)
+
+      if (isValid) {
+        // Valid markdown - render normally
+        editorRef.current?.setContent(fileContent)
+      } else {
+        // Invalid markdown - show toast and open code editor
+        showToast('Invalid markdown syntax. Please fix in code editor.', 4000)
+        setShowCodeEditor(true)
+      }
     })
 
     const unsubRequestContent = window.electron.file.onRequestContent(async () => {
@@ -111,12 +139,12 @@ function App() {
       unsubRequestContent()
       unsubExternalChange()
     }
-  }, [content])
+  }, [content, validateMarkdown])
 
   // Handle menu events
   useEffect(() => {
     const unsubTheme = window.electron.menu.onToggleTheme(setTheme)
-    const unsubSplit = window.electron.menu.onToggleSplitView(() => setShowSplitView(v => !v))
+    const unsubSplit = window.electron.menu.onToggleSplitView(() => setShowCodeEditor(v => !v))
     const unsubPalette = window.electron.menu.onOpenCommandPalette(() => setShowCommandPalette(true))
 
     return () => {
@@ -214,7 +242,7 @@ function App() {
     { id: 'open', label: 'Open File', shortcut: 'Ctrl+O', action: () => window.electron.file.open() },
     { id: 'save', label: 'Save', shortcut: 'Ctrl+S', action: handleSave },
     { id: 'saveAs', label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
-    { id: 'split', label: 'Toggle Split View', shortcut: 'Ctrl+\\', action: () => setShowSplitView(v => !v) },
+    { id: 'code', label: 'Toggle Code Editor', shortcut: 'Ctrl+M', action: () => setShowCodeEditor(v => !v) },
     { id: 'theme-light', label: 'Light Theme', action: () => setTheme('light') },
     { id: 'theme-dark', label: 'Dark Theme', action: () => setTheme('dark') },
     { id: 'theme-system', label: 'System Theme', action: () => setTheme('system') },
@@ -223,23 +251,84 @@ function App() {
     ] : [])
   ]
 
+  // Determine if dark mode is active for code editor
+  const isDarkMode = theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)
+
+  // Handle content change from code editor
+  const handleCodeEditorChange = useCallback((newContent: string) => {
+    setContent(newContent)
+    editorRef.current?.setContent(newContent)
+    setIsDirty(true)
+    // Update word/char counts
+    const words = newContent.trim().split(/\s+/).filter(w => w.length > 0).length
+    setWordCount(words)
+    setCharCount(newContent.length)
+  }, [])
+
+  // Handle code editor close
+  const handleCodeEditorClose = useCallback(() => {
+    setShowCodeEditor(false)
+  }, [])
+
+  // Handle validation state change from code editor
+  // Track previous validity to detect transitions from invalid to valid
+  const wasInvalidRef = useRef(false)
+  const handleValidationChange = useCallback((isValid: boolean) => {
+    const wasInvalid = wasInvalidRef.current
+    wasInvalidRef.current = !isValid
+    setIsMarkdownValid(isValid)
+
+    // Only update WYSIWYG editor when transitioning from invalid to valid
+    // This prevents cursor reset when typing in WYSIWYG while code editor is open
+    if (isValid && wasInvalid && editorRef.current) {
+      editorRef.current.setContent(content)
+    }
+  }, [content])
+
   return (
     <div className="h-screen flex flex-col bg-background">
       <main className="flex-1 flex overflow-hidden">
-        <div className={cn("flex-1 overflow-auto", showSplitView && "w-1/2")}>
-          <ProseMirrorEditor
-            ref={editorRef}
-            initialContent={content}
-            onChange={handleContentChange}
-            onSave={handleSave}
-          />
+        <div className={cn(
+          "flex-1 overflow-auto",
+          showCodeEditor && "w-1/2"
+        )}>
+          {isMarkdownValid ? (
+            <ProseMirrorEditor
+              ref={editorRef}
+              initialContent={content}
+              onChange={handleContentChange}
+              onSave={handleSave}
+            />
+          ) : (
+            <div className="invalid-markdown-placeholder">
+              <div className="invalid-markdown-content">
+                <div className="invalid-markdown-icon">⚠</div>
+                <h2>Markdown Syntax Error</h2>
+                <p>The file contains invalid markdown syntax.</p>
+                <p>Fix the syntax in the code editor to preview the content.</p>
+              </div>
+            </div>
+          )}
         </div>
-        {showSplitView && (
-          <div className="w-1/2 border-l border-border overflow-auto">
-            <MarkdownPreview content={content} />
+        {showCodeEditor && (
+          <div className="w-1/2 border-l border-border">
+            <CodeEditor
+              content={content}
+              onChange={handleCodeEditorChange}
+              onSave={handleSave}
+              onClose={handleCodeEditorClose}
+              isDark={isDarkMode}
+              onValidationChange={handleValidationChange}
+            />
           </div>
         )}
       </main>
+
+      {/* Code Editor FAB */}
+      <CodeEditorFab
+        isActive={showCodeEditor}
+        onToggle={() => setShowCodeEditor(prev => !prev)}
+      />
 
       <StatusBar
         wordCount={wordCount}

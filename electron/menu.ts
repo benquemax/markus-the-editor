@@ -110,8 +110,8 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
       label: 'View',
       submenu: [
         {
-          label: 'Toggle Split View',
-          accelerator: 'CmdOrCtrl+\\',
+          label: 'Toggle Code Editor',
+          accelerator: 'CmdOrCtrl+M',
           click: () => window.webContents.send('menu:toggleSplitView')
         },
         { type: 'separator' },
