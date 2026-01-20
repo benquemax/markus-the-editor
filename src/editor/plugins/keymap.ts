@@ -7,6 +7,26 @@ import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-li
 
 type Command = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean
 
+// Convert empty non-paragraph blocks to paragraph on backspace
+// This allows users to easily undo block type changes (e.g., heading back to paragraph)
+function backspaceToPlainBlock(): Command {
+  return (state, dispatch) => {
+    const { $from } = state.selection
+    const node = $from.parent
+
+    // Only handle if cursor is at start of block, block is empty, and not already a paragraph
+    const atStart = $from.parentOffset === 0
+    const isEmpty = node.content.size === 0
+    const notParagraph = node.type !== schema.nodes.paragraph
+
+    if (atStart && isEmpty && notParagraph) {
+      return setBlockType(schema.nodes.paragraph)(state, dispatch)
+    }
+
+    return false
+  }
+}
+
 // Toggle heading at a specific level
 function toggleHeading(level: number): Command {
   return (state, dispatch) => {
@@ -71,6 +91,12 @@ export function buildKeymap(onSave?: () => void) {
   )
   keys['Tab'] = sinkListItem(schema.nodes.list_item)
   keys['Shift-Tab'] = liftListItem(schema.nodes.list_item)
+
+  // Backspace converts empty non-paragraph blocks to paragraph first
+  keys['Backspace'] = chainCommands(
+    backspaceToPlainBlock(),
+    baseKeymap['Backspace']
+  )
 
   return keymap({ ...baseKeymap, ...keys })
 }

@@ -83,11 +83,13 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
 
       const plugins = [
         buildInputRules(),
+        // Slash menu must be before keymap so it can intercept Enter/Arrow keys
+        // when the menu is active, before keymap handles them
+        createSlashMenuPlugin(setSlashMenuState),
         buildKeymap(handleSave),
         history(),
         dropCursor(),
         gapCursor(),
-        createSlashMenuPlugin(setSlashMenuState),
         createPlaceholderPlugin()
       ]
 
