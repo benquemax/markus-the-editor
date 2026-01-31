@@ -1,7 +1,12 @@
-import { MarkdownParser, MarkdownSerializer } from 'prosemirror-markdown'
+import { MarkdownParser, MarkdownSerializer, MarkdownSerializerState } from 'prosemirror-markdown'
 import MarkdownIt from 'markdown-it'
 import { schema } from './schema'
 import { Mark, Node } from 'prosemirror-model'
+
+// Extended type to access internal 'out' property for table cell serialization
+interface MarkdownSerializerStateWithOut extends MarkdownSerializerState {
+  out: string
+}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const md = new (MarkdownIt as any)()
@@ -31,13 +36,13 @@ export const markdownParser = new MarkdownParser(schema, md as any, {
   })},
   code_inline: { mark: 'code' },
   s: { mark: 'strikethrough' },
-  // Ignore table tokens (tables not yet supported in editor)
-  table: { ignore: true },
-  thead: { ignore: true },
-  tbody: { ignore: true },
-  tr: { ignore: true },
-  th: { ignore: true },
-  td: { ignore: true },
+  // Table token handlers
+  table: { block: 'table' },
+  thead: { block: 'table_head' },
+  tbody: { block: 'table_body' },
+  tr: { block: 'table_row' },
+  th: { block: 'table_header', getAttrs: (tok) => ({ alignment: tok.attrGet('style')?.match(/text-align:(\w+)/)?.[1] || null }) },
+  td: { block: 'table_cell', getAttrs: (tok) => ({ alignment: tok.attrGet('style')?.match(/text-align:(\w+)/)?.[1] || null }) },
   // Ignore other unsupported tokens
   html_block: { ignore: true, noCloseToken: true },
   html_inline: { ignore: true, noCloseToken: true }
@@ -97,6 +102,110 @@ export const markdownSerializer = new MarkdownSerializer({
   },
   text(state, node) {
     state.text(node.text || '')
+  },
+  // Table serialization - we handle the entire table structure here
+  table(state, node) {
+    const rows: { cells: string[], alignments: (string | null)[] }[] = []
+    let columnAlignments: (string | null)[] = []
+
+    // Collect all rows and cells
+    node.forEach(section => {
+      const isHead = section.type.name === 'table_head'
+      section.forEach(row => {
+        const cells: string[] = []
+        const alignments: (string | null)[] = []
+        row.forEach(cell => {
+          // Serialize cell content to markdown string
+          let cellContent = ''
+          cell.forEach(child => {
+            if (child.isText) {
+              cellContent += child.text || ''
+            } else if (child.type.name === 'hard_break') {
+              cellContent += '<br>'
+            }
+          })
+          // Handle marks (bold, italic, code, etc.)
+          if (cell.childCount > 0) {
+            const tempState = state as MarkdownSerializerStateWithOut
+            const oldOut = tempState.out
+            tempState.out = ''
+            state.renderInline(cell)
+            cellContent = tempState.out.trim()
+            tempState.out = oldOut
+          }
+          cells.push(cellContent)
+          alignments.push(cell.attrs.alignment)
+        })
+        rows.push({ cells, alignments })
+        // Use alignments from header row for the separator
+        if (isHead && columnAlignments.length === 0) {
+          columnAlignments = alignments
+        }
+      })
+    })
+
+    if (rows.length === 0) return
+
+    // Calculate column widths for nice formatting
+    const columnCount = Math.max(...rows.map(r => r.cells.length))
+    const columnWidths: number[] = []
+    for (let i = 0; i < columnCount; i++) {
+      columnWidths[i] = Math.max(3, ...rows.map(r => (r.cells[i] || '').length))
+    }
+
+    // Write header row
+    const headerRow = rows[0]
+    state.write('|')
+    for (let i = 0; i < columnCount; i++) {
+      const cell = headerRow.cells[i] || ''
+      state.write(' ' + cell.padEnd(columnWidths[i]) + ' |')
+    }
+    state.write('\n')
+
+    // Write separator row
+    state.write('|')
+    for (let i = 0; i < columnCount; i++) {
+      const align = columnAlignments[i]
+      let sep = '-'.repeat(columnWidths[i])
+      if (align === 'center') {
+        sep = ':' + '-'.repeat(columnWidths[i] - 2) + ':'
+      } else if (align === 'right') {
+        sep = '-'.repeat(columnWidths[i] - 1) + ':'
+      } else if (align === 'left') {
+        sep = ':' + '-'.repeat(columnWidths[i] - 1)
+      }
+      state.write(' ' + sep + ' |')
+    }
+    state.write('\n')
+
+    // Write body rows
+    for (let rowIdx = 1; rowIdx < rows.length; rowIdx++) {
+      const row = rows[rowIdx]
+      state.write('|')
+      for (let i = 0; i < columnCount; i++) {
+        const cell = row.cells[i] || ''
+        state.write(' ' + cell.padEnd(columnWidths[i]) + ' |')
+      }
+      state.write('\n')
+    }
+
+    state.closeBlock(node)
+  },
+  // These are handled by the table serializer above, but need stubs
+  table_head(state, node) {
+    state.renderContent(node)
+  },
+  table_body(state, node) {
+    state.renderContent(node)
+  },
+  table_row(state, node) {
+    state.renderContent(node)
+  },
+  table_cell(state, node) {
+    state.renderInline(node)
+  },
+  table_header(state, node) {
+    state.renderInline(node)
   }
 }, {
   em: {

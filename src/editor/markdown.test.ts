@@ -62,6 +62,40 @@ describe('Markdown Parser', () => {
     expect(quote?.type.name).toBe('blockquote')
   })
 
+  it('should parse tables', () => {
+    const markdown = `| Col1 | Col2 |
+|------|------|
+| A    | B    |`
+    const doc = markdownParser.parse(markdown)
+    expect(doc).toBeDefined()
+    const table = doc?.firstChild
+    expect(table?.type.name).toBe('table')
+    // Check table structure: table > table_head > table_row > table_header
+    const thead = table?.firstChild
+    expect(thead?.type.name).toBe('table_head')
+    const headerRow = thead?.firstChild
+    expect(headerRow?.type.name).toBe('table_row')
+    const headerCell = headerRow?.firstChild
+    expect(headerCell?.type.name).toBe('table_header')
+    expect(headerCell?.textContent).toBe('Col1')
+  })
+
+  it('should parse content after tables', () => {
+    const markdown = `# Test
+
+| Col1 | Col2 |
+|------|------|
+| A    | B    |
+
+## After table
+
+Some text.`
+    const doc = markdownParser.parse(markdown)
+    expect(doc).toBeDefined()
+    expect(doc?.textContent).toContain('After table')
+    expect(doc?.textContent).toContain('Some text')
+  })
+
   it('should parse links', () => {
     const doc = markdownParser.parse('[Link text](https://example.com)')
     expect(doc).toBeDefined()
@@ -153,5 +187,31 @@ describe('Markdown Serializer', () => {
     ])
     const markdown = markdownSerializer.serialize(doc)
     expect(markdown).toContain('> Quote')
+  })
+
+  it('should serialize tables', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.table.create(null, [
+        schema.nodes.table_head.create(null, [
+          schema.nodes.table_row.create(null, [
+            schema.nodes.table_header.create(null, schema.text('Header 1')),
+            schema.nodes.table_header.create(null, schema.text('Header 2'))
+          ])
+        ]),
+        schema.nodes.table_body.create(null, [
+          schema.nodes.table_row.create(null, [
+            schema.nodes.table_cell.create(null, schema.text('Cell 1')),
+            schema.nodes.table_cell.create(null, schema.text('Cell 2'))
+          ])
+        ])
+      ])
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('Header 1')
+    expect(markdown).toContain('Header 2')
+    expect(markdown).toContain('Cell 1')
+    expect(markdown).toContain('Cell 2')
+    expect(markdown).toContain('|')
+    expect(markdown).toContain('---')
   })
 })

@@ -107,6 +107,80 @@ const nodes: Record<string, NodeSpec> = {
     defining: true
   },
 
+  // Table nodes for markdown table support
+  table: {
+    content: 'table_head? table_body',
+    group: 'block',
+    parseDOM: [{ tag: 'table' }],
+    toDOM() {
+      return ['table', 0]
+    }
+  },
+
+  table_head: {
+    content: 'table_row+',
+    parseDOM: [{ tag: 'thead' }],
+    toDOM() {
+      return ['thead', 0]
+    }
+  },
+
+  table_body: {
+    content: 'table_row+',
+    parseDOM: [{ tag: 'tbody' }],
+    toDOM() {
+      return ['tbody', 0]
+    }
+  },
+
+  table_row: {
+    content: '(table_cell | table_header)+',
+    parseDOM: [{ tag: 'tr' }],
+    toDOM() {
+      return ['tr', 0]
+    }
+  },
+
+  table_cell: {
+    content: 'inline*',
+    attrs: { alignment: { default: null } },
+    parseDOM: [{
+      tag: 'td',
+      getAttrs(node) {
+        const element = node as HTMLElement
+        const style = element.style.textAlign
+        return { alignment: style || null }
+      }
+    }],
+    toDOM(node) {
+      const attrs: Record<string, string> = {}
+      if (node.attrs.alignment) {
+        attrs.style = `text-align: ${node.attrs.alignment}`
+      }
+      return ['td', attrs, 0]
+    }
+  },
+
+  table_header: {
+    content: 'inline*',
+    attrs: { alignment: { default: null } },
+    parseDOM: [{
+      tag: 'th',
+      getAttrs(node) {
+        const element = node as HTMLElement
+        const style = element.style.textAlign
+        return { alignment: style || null }
+      }
+    }],
+    toDOM(node) {
+      const attrs: Record<string, string> = {}
+      if (node.attrs.alignment) {
+        attrs.style = `text-align: ${node.attrs.alignment}`
+      }
+      return ['th', attrs, 0]
+    }
+  },
+
   image: {
     inline: true,
     attrs: {

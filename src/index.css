@@ -138,6 +138,27 @@
   @apply border-t border-border my-6;
 }
 
+.ProseMirror table {
+  @apply w-full border-collapse mb-4;
+}
+
+.ProseMirror th,
+.ProseMirror td {
+  @apply border border-border px-3 py-2;
+}
+
+.ProseMirror th {
+  @apply bg-muted font-semibold text-left;
+}
+
+.ProseMirror thead {
+  @apply bg-muted;
+}
+
+.ProseMirror tbody tr:hover {
+  @apply bg-muted/50;
+}
+
 .ProseMirror a {
   @apply text-primary underline;
 }
