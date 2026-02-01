@@ -10,6 +10,7 @@ import { buildInputRules } from './plugins/inputRules'
 import { buildKeymap } from './plugins/keymap'
 import { createSlashMenuPlugin, SlashMenuState, slashMenuPluginKey } from './plugins/slashMenu'
 import { createPlaceholderPlugin } from './plugins/placeholder'
+import { createDiffHighlightPlugin, setDiffHunks, DiffHunk } from './plugins/diffHighlight'
 import { SlashMenu } from '../components/SlashMenu'
 
 export interface ProseMirrorEditorHandle {
@@ -19,12 +20,13 @@ export interface ProseMirrorEditorHandle {
 
 interface ProseMirrorEditorProps {
   initialContent?: string
+  filePath?: string | null
   onChange?: (content: string, wordCount: number, charCount: number) => void
   onSave?: () => void
 }
 
 export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirrorEditorProps>(
-  ({ initialContent = '', onChange, onSave }, ref) => {
+  ({ initialContent = '', filePath, onChange, onSave }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
     // Use ref to always have access to the latest onSave callback
@@ -88,7 +90,8 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         dropCursor(),
         gapCursor(),
         createSlashMenuPlugin(setSlashMenuState),
-        createPlaceholderPlugin()
+        createPlaceholderPlugin(),
+        createDiffHighlightPlugin()
       ]
 
       const state = EditorState.create({
@@ -131,6 +134,31 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       }
     }, []) // Only run on mount
 
+    // Load diff data when file path changes
+    const loadDiffData = useCallback(async () => {
+      if (!viewRef.current || !filePath) {
+        // Clear diff highlights if no file
+        if (viewRef.current) {
+          setDiffHunks(viewRef.current, [])
+        }
+        return
+      }
+
+      try {
+        const result = await window.electron.explorer.getFileDiff(filePath)
+        if (result.success && result.hunks && viewRef.current) {
+          setDiffHunks(viewRef.current, result.hunks as DiffHunk[])
+        }
+      } catch {
+        // Silently ignore diff errors
+      }
+    }, [filePath])
+
+    // Load diff data when file path changes
+    useEffect(() => {
+      loadDiffData()
+    }, [loadDiffData])
+
     // Handle slash menu item selection
     const handleSlashMenuSelect = useCallback((item: { action: (view: EditorView) => void }) => {
       if (!viewRef.current) return
@@ -150,7 +178,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
 
     return (
       <div className="relative h-full">
-        <div ref={editorRef} className="h-full overflow-auto" />
+        <div ref={editorRef} className="h-full overflow-auto thin-scrollbar" />
         <SlashMenu
           state={slashMenuState}
           onSelect={handleSlashMenuSelect}

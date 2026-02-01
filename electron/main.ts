@@ -5,6 +5,9 @@ import { existsSync } from 'fs'
 import { createMenu } from './menu'
 import { setupFileWatcher, stopFileWatcher } from './fileWatcher'
 import { setupGitHandlers } from './git'
+import { setupAiHandlers } from './ai'
+import { setupFileExplorerHandlers } from './fileExplorer'
+import { setupDirectoryWatcherHandlers, stopDirectoryWatcher } from './directoryWatcher'
 import Store from 'electron-store'
 
 // Disable GPU acceleration if it causes issues on some Linux systems
@@ -14,7 +17,15 @@ const store = new Store({
   defaults: {
     recentFiles: [] as string[],
     windowBounds: { width: 1200, height: 800 },
-    theme: 'system' as 'light' | 'dark' | 'system'
+    theme: 'system' as 'light' | 'dark' | 'system',
+    aiMerge: {
+      enabled: false,
+      apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+      apiKey: '',
+      model: 'gpt-4o-mini'
+    },
+    explorerRootPath: null as string | null,
+    showExplorer: true
   }
 })
 
@@ -99,8 +110,10 @@ function createWindow() {
   }
 
   const menu = createMenu(mainWindow, {
-    onNewFile: () => handleNewFile(),
+    onNewWindow: () => handleNewWindow(),
+    onNewTab: () => handleNewTab(),
     onOpenFile: () => handleOpenFile(),
+    onOpenFolder: () => handleOpenFolder(),
     onSaveFile: () => handleSaveFile(),
     onSaveAsFile: () => handleSaveAsFile(),
     onPrintToPdf: () => handlePrintToPdf(),
@@ -112,7 +125,17 @@ function createWindow() {
   Menu.setApplicationMenu(menu)
 }
 
-async function handleNewFile() {
+/**
+ * Creates a new Markus window.
+ */
+function handleNewWindow() {
+  createWindow()
+}
+
+/**
+ * Creates a new tab in the current window.
+ */
+function handleNewTab() {
   if (mainWindow) {
     currentFilePath = null
     mainWindow.setTitle('Markus - Untitled')
@@ -120,11 +143,30 @@ async function handleNewFile() {
   }
 }
 
+/**
+ * File type detection helpers
+ */
+const BINARY_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'mp4', 'webm', 'mov', 'avi', 'mkv', 'ogg']
+const SUPPORTED_EXTENSIONS = ['md', 'markdown', 'json', 'html', 'htm', ...BINARY_EXTENSIONS]
+
+function getFileExtension(filePath: string): string {
+  const parts = filePath.split('.')
+  return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : ''
+}
+
+function isBinaryFile(filePath: string): boolean {
+  return BINARY_EXTENSIONS.includes(getFileExtension(filePath))
+}
+
 async function handleOpenFile() {
   const result = await showOpenDialog({
     properties: ['openFile'],
     filters: [
       { name: 'Markdown', extensions: ['md', 'markdown'] },
+      { name: 'JSON', extensions: ['json'] },
+      { name: 'HTML', extensions: ['html', 'htm'] },
+      { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'] },
+      { name: 'Videos', extensions: ['mp4', 'webm', 'mov'] },
       { name: 'All Files', extensions: ['*'] }
     ]
   })
@@ -134,16 +176,40 @@ async function handleOpenFile() {
   }
 }
 
+async function handleOpenFolder() {
+  if (!mainWindow) return
+
+  const result = await showOpenDialog({
+    properties: ['openDirectory']
+  })
+
+  if (!result.canceled && result.filePaths.length > 0) {
+    const folderPath = result.filePaths[0]
+    // Send the folder path to the renderer to open in explorer
+    mainWindow.webContents.send('explorer:openFolder', { path: folderPath })
+  }
+}
+
 async function openFile(filePath: string) {
   if (!mainWindow) return
 
   try {
-    const content = await fs.readFile(filePath, 'utf-8')
     currentFilePath = filePath
     mainWindow.setTitle(`Markus - ${path.basename(filePath)}`)
-    mainWindow.webContents.send('file:opened', { content, filePath })
+
+    if (isBinaryFile(filePath)) {
+      // Read binary files as base64
+      const data = await fs.readFile(filePath)
+      mainWindow.webContents.send('file:binaryOpened', { data: data.toString('base64'), filePath })
+    } else {
+      // Read text files as utf-8
+      const content = await fs.readFile(filePath, 'utf-8')
+      mainWindow.webContents.send('file:opened', { content, filePath })
+      // Only watch text files for external changes
+      setupFileWatcher(filePath, mainWindow)
+    }
+
     addToRecentFiles(filePath)
-    setupFileWatcher(filePath, mainWindow)
   } catch (error) {
     dialog.showErrorBox('Error', `Failed to open file: ${error}`)
   }
@@ -257,6 +323,16 @@ ipcMain.handle('file:saveAs', async (_, content: string) => {
 
 ipcMain.handle('file:getCurrentPath', () => currentFilePath)
 
+// Read a binary file as base64
+ipcMain.handle('file:readBinary', async (_, filePath: string) => {
+  try {
+    const data = await fs.readFile(filePath)
+    return { success: true, data: data.toString('base64') }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
 ipcMain.handle('dialog:showMessage', async (_, options: { type: string; title: string; message: string; buttons: string[] }) => {
   const result = await showMessageBox({
     type: options.type as 'none' | 'info' | 'error' | 'question' | 'warning',
@@ -275,6 +351,13 @@ ipcMain.handle('shell:openExternal', (_, url: string) => shell.openExternal(url)
 // Set up git handlers
 setupGitHandlers(ipcMain, () => currentFilePath)
 
+// Set up AI merge handlers
+setupAiHandlers(ipcMain, store)
+
+// Set up file explorer handlers
+setupFileExplorerHandlers(ipcMain, () => mainWindow)
+setupDirectoryWatcherHandlers(ipcMain, () => mainWindow)
+
 // Handle file dropped onto window
 ipcMain.handle('file:openPath', async (_, filePath: string) => {
   if (existsSync(filePath)) {
@@ -282,6 +365,83 @@ ipcMain.handle('file:openPath', async (_, filePath: string) => {
     return { success: true }
   }
   return { success: false, error: 'File not found' }
+})
+
+/**
+ * Filebar Storage Handlers
+ *
+ * Filebars are saved in ~/.config/markus-the-editor/filebars/ following XDG Base Directory spec.
+ * Each filebar is a JSON file containing an array of folder entries.
+ */
+function getFilebarDir(): string {
+  const configDir = process.env.XDG_CONFIG_HOME || path.join(app.getPath('home'), '.config')
+  return path.join(configDir, 'markus-the-editor', 'filebars')
+}
+
+async function ensureFilebarDir(): Promise<void> {
+  const dir = getFilebarDir()
+  await fs.mkdir(dir, { recursive: true })
+}
+
+ipcMain.handle('filebar:save', async (_, name: string, folders: Array<{ path: string; isGitRepo: boolean }>) => {
+  try {
+    await ensureFilebarDir()
+    const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '_')
+    const filePath = path.join(getFilebarDir(), `${sanitizedName}.json`)
+    await fs.writeFile(filePath, JSON.stringify({ name, folders }, null, 2), 'utf-8')
+    return { success: true, path: filePath }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('filebar:list', async () => {
+  try {
+    await ensureFilebarDir()
+    const dir = getFilebarDir()
+    const files = await fs.readdir(dir)
+    const filebars: Array<{ name: string; fileName: string; folderCount: number }> = []
+
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue
+      try {
+        const content = await fs.readFile(path.join(dir, file), 'utf-8')
+        const data = JSON.parse(content)
+        filebars.push({
+          name: data.name || file.replace('.json', ''),
+          fileName: file,
+          folderCount: data.folders?.length || 0
+        })
+      } catch {
+        // Skip invalid files
+      }
+    }
+
+    return { success: true, filebars }
+  } catch (error) {
+    return { success: false, error: String(error), filebars: [] }
+  }
+})
+
+ipcMain.handle('filebar:load', async (_, fileName: string) => {
+  try {
+    const filePath = path.join(getFilebarDir(), fileName)
+    const content = await fs.readFile(filePath, 'utf-8')
+    const data = JSON.parse(content)
+    return { success: true, folders: data.folders || [] }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
+})
+
+ipcMain.handle('filebar:delete', async (_, fileName: string) => {
+  try {
+    const filePath = path.join(getFilebarDir(), fileName)
+    await fs.unlink(filePath)
+    return { success: true }
+  } catch (error) {
+    return { success: false, error: String(error) }
+  }
 })
 
 app.whenReady().then(() => {
@@ -306,19 +466,22 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   stopFileWatcher()
+  stopDirectoryWatcher()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
 /**
- * Extract markdown file path from command line arguments.
+ * Extract supported file path from command line arguments.
  * Used for both initial launch and second-instance handling on Linux.
  */
 function getFilePathFromArgs(args: string[]): string | undefined {
-  return args.find(arg =>
-    (arg.endsWith('.md') || arg.endsWith('.markdown')) && existsSync(arg)
-  )
+  return args.find(arg => {
+    if (!existsSync(arg)) return false
+    const ext = getFileExtension(arg)
+    return SUPPORTED_EXTENSIONS.includes(ext)
+  })
 }
 
 // Handle file opened via file association on macOS (uses open-file event)

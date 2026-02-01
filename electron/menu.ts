@@ -1,8 +1,10 @@
 import { Menu, BrowserWindow, app, shell } from 'electron'
 
 interface MenuCallbacks {
-  onNewFile: () => void
+  onNewWindow: () => void
+  onNewTab: () => void
   onOpenFile: () => void
+  onOpenFolder: () => void
   onSaveFile: () => void
   onSaveAsFile: () => void
   onPrintToPdf: () => void
@@ -50,14 +52,24 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
       label: 'File',
       submenu: [
         {
-          label: 'New',
+          label: 'New Window',
           accelerator: 'CmdOrCtrl+N',
-          click: callbacks.onNewFile
+          click: callbacks.onNewWindow
         },
+        {
+          label: 'New Tab',
+          accelerator: 'CmdOrCtrl+T',
+          click: callbacks.onNewTab
+        },
+        { type: 'separator' },
         {
           label: 'Open...',
           accelerator: 'CmdOrCtrl+O',
           click: callbacks.onOpenFile
+        },
+        {
+          label: 'Open Folder...',
+          click: callbacks.onOpenFolder
         },
         {
           label: 'Open Recent',
@@ -109,6 +121,11 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
     {
       label: 'View',
       submenu: [
+        {
+          label: 'Toggle Explorer',
+          accelerator: 'CmdOrCtrl+B',
+          click: () => window.webContents.send('menu:toggleExplorer')
+        },
         {
           label: 'Toggle Split View',
           accelerator: 'CmdOrCtrl+\\',
