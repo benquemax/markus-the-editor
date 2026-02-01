@@ -55,6 +55,7 @@ export function isBinaryFile(fileType: FileType): boolean {
  * Returns true if the file type is supported by the application.
  * All non-binary files are supported via the code editor fallback.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function isSupportedFile(_fileType: FileType): boolean {
   // All file types are now supported - binary files have viewers,
   // known text files have specialized editors, and unknown files
