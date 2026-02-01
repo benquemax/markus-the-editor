@@ -17,6 +17,69 @@ export interface DiffHunk {
   type: 'added' | 'modified'
 }
 
+// Markus AI Agent types
+export interface MarkusSettings {
+  llm: {
+    apiEndpoint: string
+    apiKey: string
+    model: string
+    maxTokens?: number
+    temperature?: number
+  }
+  search: {
+    searxngUrl?: string
+    useDuckDuckGo: boolean
+  }
+  defaultPlanningMode: boolean
+  yoloMode: boolean
+}
+
+export interface MarkusConversation {
+  id: string
+  title: string
+  filebarId: string
+  messages: MarkusChatMessage[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface MarkusChatMessage {
+  id: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  timestamp: number
+  toolCalls?: MarkusToolCallRecord[]
+  isPlan?: boolean
+  status: 'pending' | 'streaming' | 'complete' | 'error'
+  error?: string
+}
+
+export interface MarkusToolCallRecord {
+  id: string
+  name: string
+  arguments: Record<string, unknown>
+  status: 'pending' | 'approved' | 'rejected' | 'executing' | 'complete' | 'error'
+  result?: unknown
+  error?: string
+  startedAt: number
+  completedAt?: number
+}
+
+export interface MarkusConversationListItem {
+  id: string
+  title: string
+  updatedAt: number
+  messageCount: number
+}
+
+export interface MarkusMemoryProposal {
+  id: string
+  scope: 'system' | 'project'
+  currentContent: string
+  proposedContent: string
+  diff: string
+}
+
 export interface ElectronAPI {
   file: {
     save: (content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
@@ -134,6 +197,60 @@ export interface ElectronAPI {
     list: () => Promise<{ success: boolean; filebars: Array<{ name: string; fileName: string; folderCount: number }>; error?: string }>
     load: (fileName: string) => Promise<{ success: boolean; folders?: Array<{ path: string; isGitRepo: boolean }>; error?: string }>
     delete: (fileName: string) => Promise<{ success: boolean; error?: string }>
+  }
+  markus: {
+    // Settings
+    getSettings: () => Promise<MarkusSettings>
+    setSettings: (settings: Partial<MarkusSettings>) => Promise<MarkusSettings>
+    openSettings: () => Promise<{ success: boolean; path?: string }>
+    validateSettings: () => Promise<{ valid: boolean; errors: string[] }>
+    testConnection: () => Promise<{ success: boolean; error?: string }>
+
+    // Conversations
+    createConversation: () => Promise<MarkusConversation>
+    loadConversation: (conversationId: string) => Promise<MarkusConversation | null>
+    loadLatestConversation: () => Promise<MarkusConversation | null>
+    saveConversation: (conversation: MarkusConversation) => Promise<{ success: boolean }>
+    listConversations: () => Promise<MarkusConversationListItem[]>
+    deleteConversation: (conversationId: string) => Promise<boolean>
+
+    // Chat
+    sendMessage: (args: {
+      conversation: MarkusConversation
+      message: string
+      planningMode: boolean
+      yoloMode: boolean
+    }) => Promise<{ success: boolean; conversation?: MarkusConversation; error?: string }>
+    cancelRequest: (conversationId: string) => Promise<{ success: boolean; error?: string }>
+
+    // Tool approval
+    approveTool: (args: {
+      conversationId: string
+      toolCallId: string
+      approved: boolean
+    }) => Promise<{ success: boolean; error?: string }>
+
+    // Memory
+    proposeMemoryUpdate: (args: {
+      scope: 'system' | 'project'
+      action: 'add' | 'update' | 'remove'
+      section: string
+      content: string
+    }) => Promise<MarkusMemoryProposal>
+    applyMemoryUpdate: (proposalId: string) => Promise<{ success: boolean; error?: string }>
+    rejectMemoryUpdate: (proposalId: string) => Promise<{ success: boolean }>
+
+    // Workspace updates (from renderer to main)
+    updateWorkspace: (folders: string[]) => Promise<{ success: boolean }>
+    updateOpenFiles: (files: string[]) => Promise<{ success: boolean }>
+
+    // Events
+    onMessageChunk: (callback: (data: { conversationId: string; chunk: string }) => void) => () => void
+    onToolCallStarted: (callback: (data: { conversationId: string; toolCall: MarkusToolCallRecord }) => void) => () => void
+    onToolCallComplete: (callback: (data: { conversationId: string; toolCallId: string; result: unknown }) => void) => () => void
+    onRequestComplete: (callback: (data: { conversationId: string; messageId: string }) => void) => () => void
+    onRequestError: (callback: (data: { conversationId: string; error: string }) => void) => () => void
+    onToggleMarkus: (callback: () => void) => () => void
   }
 }
 
@@ -255,6 +372,70 @@ const api: ElectronAPI = {
     list: () => ipcRenderer.invoke('filebar:list'),
     load: (fileName) => ipcRenderer.invoke('filebar:load', fileName),
     delete: (fileName) => ipcRenderer.invoke('filebar:delete', fileName)
+  },
+  markus: {
+    // Settings
+    getSettings: () => ipcRenderer.invoke('markus:getSettings'),
+    setSettings: (settings) => ipcRenderer.invoke('markus:setSettings', settings),
+    openSettings: () => ipcRenderer.invoke('markus:openSettings'),
+    validateSettings: () => ipcRenderer.invoke('markus:validateSettings'),
+    testConnection: () => ipcRenderer.invoke('markus:testConnection'),
+
+    // Conversations
+    createConversation: () => ipcRenderer.invoke('markus:createConversation'),
+    loadConversation: (conversationId) => ipcRenderer.invoke('markus:loadConversation', conversationId),
+    loadLatestConversation: () => ipcRenderer.invoke('markus:loadLatestConversation'),
+    saveConversation: (conversation) => ipcRenderer.invoke('markus:saveConversation', conversation),
+    listConversations: () => ipcRenderer.invoke('markus:listConversations'),
+    deleteConversation: (conversationId) => ipcRenderer.invoke('markus:deleteConversation', conversationId),
+
+    // Chat
+    sendMessage: (args) => ipcRenderer.invoke('markus:sendMessage', args),
+    cancelRequest: (conversationId) => ipcRenderer.invoke('markus:cancelRequest', conversationId),
+
+    // Tool approval
+    approveTool: (args) => ipcRenderer.invoke('markus:approveTool', args),
+
+    // Memory
+    proposeMemoryUpdate: (args) => ipcRenderer.invoke('markus:proposeMemoryUpdate', args),
+    applyMemoryUpdate: (proposalId) => ipcRenderer.invoke('markus:applyMemoryUpdate', proposalId),
+    rejectMemoryUpdate: (proposalId) => ipcRenderer.invoke('markus:rejectMemoryUpdate', proposalId),
+
+    // Workspace updates
+    updateWorkspace: (folders) => ipcRenderer.invoke('markus:updateWorkspace', folders),
+    updateOpenFiles: (files) => ipcRenderer.invoke('markus:updateOpenFiles', files),
+
+    // Events
+    onMessageChunk: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; chunk: string }) => callback(data)
+      ipcRenderer.on('markus:messageChunk', handler)
+      return () => ipcRenderer.removeListener('markus:messageChunk', handler)
+    },
+    onToolCallStarted: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; toolCall: MarkusToolCallRecord }) => callback(data)
+      ipcRenderer.on('markus:toolCallStarted', handler)
+      return () => ipcRenderer.removeListener('markus:toolCallStarted', handler)
+    },
+    onToolCallComplete: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; toolCallId: string; result: unknown }) => callback(data)
+      ipcRenderer.on('markus:toolCallComplete', handler)
+      return () => ipcRenderer.removeListener('markus:toolCallComplete', handler)
+    },
+    onRequestComplete: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; messageId: string }) => callback(data)
+      ipcRenderer.on('markus:requestComplete', handler)
+      return () => ipcRenderer.removeListener('markus:requestComplete', handler)
+    },
+    onRequestError: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; error: string }) => callback(data)
+      ipcRenderer.on('markus:requestError', handler)
+      return () => ipcRenderer.removeListener('markus:requestError', handler)
+    },
+    onToggleMarkus: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:toggleMarkus', handler)
+      return () => ipcRenderer.removeListener('menu:toggleMarkus', handler)
+    }
   }
 }
 

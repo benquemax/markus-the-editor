@@ -127,6 +127,11 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
           click: () => window.webContents.send('menu:toggleExplorer')
         },
         {
+          label: 'Toggle Markus',
+          accelerator: 'CmdOrCtrl+M',
+          click: () => window.webContents.send('menu:toggleMarkus')
+        },
+        {
           label: 'Toggle Split View',
           accelerator: 'CmdOrCtrl+\\',
           click: () => window.webContents.send('menu:toggleSplitView')

@@ -5,9 +5,13 @@
  * Automatically detects language from file extension for syntax highlighting.
  */
 
-import { useEffect, useRef, useCallback } from 'react'
+import { useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react'
 import Editor, { OnMount } from '@monaco-editor/react'
 import type { editor } from 'monaco-editor'
+
+export interface CodeEditorHandle {
+  getContent: () => string
+}
 
 interface CodeEditorProps {
   content: string
@@ -108,8 +112,16 @@ function getLanguageFromPath(filePath: string | null): string {
   return languageMap[ext] || 'plaintext'
 }
 
-export function CodeEditor({ content, filePath, onChange, onSave }: CodeEditorProps) {
+export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
+  function CodeEditor({ content, filePath, onChange, onSave }, ref) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
+
+  // Expose getContent method to parent
+  useImperativeHandle(ref, () => ({
+    getContent: () => {
+      return editorRef.current?.getValue() || content
+    }
+  }), [content])
 
   // Detect if we're in dark mode
   const isDarkMode = document.documentElement.classList.contains('dark')
@@ -173,4 +185,4 @@ export function CodeEditor({ content, filePath, onChange, onSave }: CodeEditorPr
       />
     </div>
   )
-}
+})

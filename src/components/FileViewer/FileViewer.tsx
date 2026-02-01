@@ -11,7 +11,7 @@ import { ImageViewer } from './ImageViewer'
 import { VideoPlayer } from './VideoPlayer'
 import { JsonEditor } from './JsonEditor'
 import { HtmlEditor } from './HtmlEditor'
-import { CodeEditor } from './CodeEditor'
+import { CodeEditor, CodeEditorHandle } from './CodeEditor'
 import { Tab } from '../TabBar'
 import { FileQuestion } from 'lucide-react'
 
@@ -47,8 +47,9 @@ function UnsupportedViewer({ filePath }: { filePath: string | null }) {
 export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
   function FileViewer({ tab, onContentChange, onSave }, ref) {
     const proseMirrorRef = useRef<ProseMirrorEditorHandle>(null)
+    const codeEditorRef = useRef<CodeEditorHandle>(null)
 
-    // Expose methods for parent components (mainly used by markdown editor)
+    // Expose methods for parent components
     useImperativeHandle(ref, () => ({
       setContent: (content: string) => {
         if (proseMirrorRef.current) {
@@ -56,8 +57,13 @@ export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
         }
       },
       getContent: () => {
+        // For markdown files, use ProseMirror
         if (proseMirrorRef.current) {
           return proseMirrorRef.current.getContent()
+        }
+        // For code files, use CodeEditor's direct Monaco access
+        if (codeEditorRef.current) {
+          return codeEditorRef.current.getContent()
         }
         return tab.content
       }
@@ -126,6 +132,7 @@ export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
         // For unknown file types, open in code editor mode
         return (
           <CodeEditor
+            ref={codeEditorRef}
             content={tab.content}
             filePath={tab.filePath}
             onChange={handleTextContentChange}

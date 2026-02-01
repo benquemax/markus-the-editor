@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { GitPanel } from './components/GitPanel'
@@ -8,6 +8,7 @@ import { ConflictResolver } from './components/ConflictResolver'
 import { Filebar, FolderEntry } from './components/Filebar'
 import { TabBar, Tab, createUntitledTab, createFileTab, createBinaryFileTab } from './components/TabBar'
 import { FileViewer, FileViewerHandle } from './components/FileViewer'
+import { MarkusPanel } from './components/Markus'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
 import { cn } from './lib/utils'
@@ -39,6 +40,11 @@ function App() {
   const [folders, setFolders] = useState<FolderEntry[]>([])
   const [filebarWidth, setFilebarWidth] = useState(280)
   const [isResizing, setIsResizing] = useState(false)
+  const [showMarkusPanel, setShowMarkusPanel] = useState(true)
+  const [markusPanelWidth, setMarkusPanelWidth] = useState(() =>
+    Math.floor(window.innerWidth * 0.25)
+  )
+  const [isResizingMarkus, setIsResizingMarkus] = useState(false)
   const editorRef = useRef<FileViewerHandle>(null)
 
   // Update tab content helper
@@ -51,13 +57,16 @@ function App() {
   }, [])
 
   // Mark tab as saved
-  const markTabSaved = useCallback((tabId: string, newFilePath?: string) => {
+  // contentThatWasSaved should be passed to ensure savedContent matches what was written to disk
+  const markTabSaved = useCallback((tabId: string, contentThatWasSaved?: string, newFilePath?: string) => {
     setTabs(prev => prev.map(tab => {
       if (tab.id !== tabId) return tab
 
-      const savedContent = tab.content
+      // Use the content that was actually saved, or fall back to tab.content
+      const savedContent = contentThatWasSaved ?? tab.content
       const updatedTab: Tab = {
         ...tab,
+        content: savedContent,  // Sync content with what was saved
         savedContent,
         isDirty: false
       }
@@ -349,7 +358,7 @@ function App() {
       } else if (result.content && activeTabId) {
         updateTabContent(activeTabId, result.content, false)
         editorRef.current?.setContent(result.content)
-        markTabSaved(activeTabId)
+        markTabSaved(activeTabId, result.content)
         setBehindCount(0)
       }
     } catch (err) {
@@ -374,7 +383,7 @@ function App() {
       if (result.success && activeTabId) {
         updateTabContent(activeTabId, resolvedContent, false)
         editorRef.current?.setContent(resolvedContent)
-        markTabSaved(activeTabId)
+        markTabSaved(activeTabId, resolvedContent)
         setActiveConflict(null)
         setBehindCount(0)
 
@@ -456,7 +465,7 @@ function App() {
       const currentContent = editorRef.current?.getContent() || content
       const result = await window.electron.file.save(currentContent)
       if (result.success && activeTabId) {
-        markTabSaved(activeTabId)
+        markTabSaved(activeTabId, currentContent)
       }
     })
 
@@ -475,7 +484,7 @@ function App() {
         if (activeTab?.fileType === 'markdown') {
           editorRef.current?.setContent(externalContent)
         }
-        markTabSaved(activeTabId)
+        markTabSaved(activeTabId, externalContent)
       }
     })
 
@@ -494,6 +503,7 @@ function App() {
     const unsubSplit = window.electron.menu.onToggleSplitView(() => setShowSplitView(v => !v))
     const unsubPalette = window.electron.menu.onOpenCommandPalette(() => setShowCommandPalette(true))
     const unsubExplorer = window.electron.menu.onToggleExplorer(() => setShowFilebar(v => !v))
+    const unsubMarkus = window.electron.markus.onToggleMarkus(() => setShowMarkusPanel(v => !v))
     const unsubOpenFolder = window.electron.explorer.onOpenFolder((data: { path: string }) => {
       addFolderToFilebar(data.path)
       setShowFilebar(true)
@@ -504,6 +514,7 @@ function App() {
       unsubSplit()
       unsubPalette()
       unsubExplorer()
+      unsubMarkus()
       unsubOpenFolder()
     }
   }, [addFolderToFilebar])
@@ -513,7 +524,7 @@ function App() {
     const currentContent = editorRef.current?.getContent() || content
     const result = await window.electron.file.saveAs(currentContent)
     if (result.success && result.filePath && activeTabId) {
-      markTabSaved(activeTabId, result.filePath)
+      markTabSaved(activeTabId, currentContent, result.filePath)
     }
   }, [content, activeTabId, markTabSaved])
 
@@ -546,6 +557,11 @@ function App() {
         if (activeTabId) {
           closeTab(activeTabId)
         }
+      }
+      // Ctrl+M - Toggle Markus panel
+      if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
+        e.preventDefault()
+        setShowMarkusPanel(v => !v)
       }
       // Ctrl+N - New window (handled by main process)
       // We don't prevent default here, let it go to the main process
@@ -624,15 +640,22 @@ function App() {
     if (filePath) {
       const result = await window.electron.file.save(currentContent)
       if (result.success && activeTabId) {
-        markTabSaved(activeTabId)
+        markTabSaved(activeTabId, currentContent)
       }
     } else {
       const result = await window.electron.file.saveAs(currentContent)
       if (result.success && result.filePath && activeTabId) {
-        markTabSaved(activeTabId, result.filePath)
+        markTabSaved(activeTabId, currentContent, result.filePath)
       }
     }
   }, [content, filePath, activeTabId, markTabSaved])
+
+  // Memoized arrays for Markus panel
+  const workspaceFolders = useMemo(() => folders.map(f => f.path), [folders])
+  const openFilePaths = useMemo(() =>
+    tabs.filter(t => t.filePath).map(t => t.filePath!),
+    [tabs]
+  )
 
   const commands = [
     { id: 'newTab', label: 'New Tab', shortcut: 'Ctrl+T', action: createNewTab },
@@ -642,6 +665,7 @@ function App() {
     { id: 'save', label: 'Save', shortcut: 'Ctrl+S', action: handleSave },
     { id: 'saveAs', label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
     { id: 'filebar', label: 'Toggle Filebar', shortcut: 'Ctrl+B', action: () => setShowFilebar(v => !v) },
+    { id: 'markus', label: 'Toggle Markus', shortcut: 'Ctrl+M', action: () => setShowMarkusPanel(v => !v) },
     { id: 'split', label: 'Toggle Split View', shortcut: 'Ctrl+\\', action: () => setShowSplitView(v => !v) },
     { id: 'theme-light', label: 'Light Theme', action: () => setTheme('light') },
     { id: 'theme-dark', label: 'Dark Theme', action: () => setTheme('dark') },
@@ -743,6 +767,49 @@ function App() {
                 <MarkdownPreview content={content} />
               </div>
             )}
+          </>
+        )}
+
+        {/* Markus AI panel */}
+        {showMarkusPanel && (
+          <>
+            {/* Resize handle */}
+            <div
+              className={cn(
+                "w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors",
+                isResizingMarkus && "bg-primary"
+              )}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                setIsResizingMarkus(true)
+                const startX = e.clientX
+                const startWidth = markusPanelWidth
+
+                const handleMouseMove = (e: MouseEvent) => {
+                  // Markus panel resizes from the left edge, so subtract delta
+                  const newWidth = Math.max(250, Math.min(600, startWidth - (e.clientX - startX)))
+                  setMarkusPanelWidth(newWidth)
+                }
+
+                const handleMouseUp = () => {
+                  setIsResizingMarkus(false)
+                  document.removeEventListener('mousemove', handleMouseMove)
+                  document.removeEventListener('mouseup', handleMouseUp)
+                }
+
+                document.addEventListener('mousemove', handleMouseMove)
+                document.addEventListener('mouseup', handleMouseUp)
+              }}
+            />
+            <div
+              className="flex flex-col border-l border-border flex-shrink-0 overflow-hidden"
+              style={{ width: markusPanelWidth }}
+            >
+              <MarkusPanel
+                workspaceFolders={workspaceFolders}
+                openFiles={openFilePaths}
+              />
+            </div>
           </>
         )}
       </main>

@@ -8,6 +8,7 @@ import { setupGitHandlers } from './git'
 import { setupAiHandlers } from './ai'
 import { setupFileExplorerHandlers } from './fileExplorer'
 import { setupDirectoryWatcherHandlers, stopDirectoryWatcher } from './directoryWatcher'
+import { setupMarkusHandlers } from './markus/handlers'
 import Store from 'electron-store'
 
 // Disable GPU acceleration if it causes issues on some Linux systems
@@ -357,6 +358,30 @@ setupAiHandlers(ipcMain, store)
 // Set up file explorer handlers
 setupFileExplorerHandlers(ipcMain, () => mainWindow)
 setupDirectoryWatcherHandlers(ipcMain, () => mainWindow)
+
+// Track workspace folders and open files for Markus
+// These are updated via IPC from the renderer when state changes
+let workspaceFolders: string[] = []
+let openFilePaths: string[] = []
+
+ipcMain.handle('markus:updateWorkspace', (_, folders: string[]) => {
+  workspaceFolders = folders
+  return { success: true }
+})
+
+ipcMain.handle('markus:updateOpenFiles', (_, files: string[]) => {
+  openFilePaths = files
+  return { success: true }
+})
+
+// Set up Markus AI agent handlers
+setupMarkusHandlers(
+  ipcMain,
+  () => mainWindow,
+  () => workspaceFolders,
+  () => openFilePaths,
+  openFile
+)
 
 // Handle file dropped onto window
 ipcMain.handle('file:openPath', async (_, filePath: string) => {
