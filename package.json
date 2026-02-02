@@ -38,6 +38,7 @@
     "js-yaml": "^4.1.1",
     "lucide-react": "^0.309.0",
     "markdown-it": "^14.0.0",
+    "mermaid": "^11.12.2",
     "monaco-editor": "^0.55.1",
     "prosemirror-commands": "^1.5.2",
     "prosemirror-dropcursor": "^1.8.1",

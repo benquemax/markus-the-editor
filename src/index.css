@@ -277,3 +277,84 @@
 .filebar-scroll::-webkit-scrollbar-thumb:hover {
   background-color: hsl(var(--muted-foreground) / 0.5);
 }
+
+/* Mermaid NodeView styles */
+.mermaid-nodeview {
+  @apply relative my-4 rounded-lg border border-border bg-muted/30 overflow-hidden;
+  transition: border-color 0.2s ease;
+}
+
+.mermaid-nodeview:hover {
+  @apply border-muted-foreground/40;
+}
+
+.mermaid-nodeview.ProseMirror-selectednode {
+  @apply border-primary ring-2 ring-primary/20;
+}
+
+.mermaid-nodeview.mermaid-editing {
+  @apply border-primary;
+}
+
+/* Mermaid toolbar */
+.mermaid-toolbar {
+  @apply absolute top-2 right-2 z-10 opacity-0 transition-opacity duration-200;
+}
+
+.mermaid-nodeview:hover .mermaid-toolbar,
+.mermaid-nodeview.mermaid-editing .mermaid-toolbar {
+  @apply opacity-100;
+}
+
+.mermaid-edit-btn {
+  @apply px-2 py-1 text-xs font-medium rounded bg-secondary text-secondary-foreground hover:bg-accent transition-colors;
+}
+
+/* Mermaid diagram container */
+.mermaid-diagram {
+  @apply p-4 flex items-center justify-center min-h-[100px];
+}
+
+.mermaid-diagram svg {
+  @apply max-w-full h-auto;
+}
+
+/* Mermaid loading state */
+.mermaid-loading {
+  @apply text-muted-foreground text-sm italic;
+}
+
+/* Mermaid error state */
+.mermaid-error {
+  @apply p-3 mx-4 mt-4 rounded bg-destructive/10 text-destructive text-sm font-mono;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.mermaid-nodeview.mermaid-has-error .mermaid-diagram {
+  @apply hidden;
+}
+
+/* Mermaid source code (edit mode) */
+.mermaid-source {
+  @apply p-2;
+}
+
+.mermaid-textarea {
+  @apply w-full min-h-[150px] p-3 rounded bg-muted border border-input text-foreground font-mono text-sm resize-y;
+  @apply focus:outline-none focus:ring-2 focus:ring-ring;
+}
+
+/* Dark mode specific adjustments for diagram SVG */
+.dark .mermaid-diagram svg {
+  /* Ensure SVG text is visible in dark mode */
+  --mermaid-font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+/* Smooth transitions for theme switching */
+.mermaid-nodeview,
+.mermaid-diagram,
+.mermaid-error,
+.mermaid-textarea {
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}

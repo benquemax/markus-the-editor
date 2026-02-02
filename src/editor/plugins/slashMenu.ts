@@ -104,6 +104,29 @@ const slashMenuItems: SlashMenuItem[] = [
       dispatch(tr.replaceSelectionWith(schema.nodes.horizontal_rule.create()).scrollIntoView())
       view.focus()
     }
+  },
+  {
+    id: 'mermaid',
+    label: 'Mermaid Diagram',
+    description: 'Flowcharts, sequence diagrams, and more',
+    icon: '◇',
+    action: (view) => {
+      const { state, dispatch } = view
+      const { tr } = state
+      // Insert a mermaid code block with a starter flowchart template
+      const starterTemplate = `graph TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Action 1]
+    B -->|No| D[Action 2]
+    C --> E[End]
+    D --> E`
+      const node = schema.nodes.code_block.create(
+        { language: 'mermaid' },
+        schema.text(starterTemplate)
+      )
+      dispatch(tr.replaceSelectionWith(node).scrollIntoView())
+      view.focus()
+    }
   }
 ]
 

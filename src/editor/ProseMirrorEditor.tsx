@@ -12,6 +12,8 @@ import { createSlashMenuPlugin, SlashMenuState, slashMenuPluginKey } from './plu
 import { createPlaceholderPlugin } from './plugins/placeholder'
 import { createDiffHighlightPlugin, setDiffHunks, DiffHunk } from './plugins/diffHighlight'
 import { SlashMenu } from '../components/SlashMenu'
+import { createMermaidNodeView, MermaidNodeView } from './nodeviews/MermaidNodeView'
+import { reinitializeMermaidForTheme } from './nodeviews/mermaidRenderer'
 
 export interface ProseMirrorEditorHandle {
   getContent: () => string
@@ -99,6 +101,9 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         plugins
       })
 
+      // Track mermaid node views for theme updates
+      const mermaidNodeViews: Set<MermaidNodeView> = new Set()
+
       const view = new EditorView(editorRef.current, {
         state,
         dispatchTransaction(transaction: Transaction) {
@@ -113,6 +118,17 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         },
         attributes: {
           class: 'prose prose-slate dark:prose-invert max-w-none'
+        },
+        nodeViews: {
+          code_block: (node, view, getPos) => {
+            const mermaidView = createMermaidNodeView(node, view, getPos)
+            if (mermaidView) {
+              mermaidNodeViews.add(mermaidView)
+              return mermaidView
+            }
+            // Return undefined to use default rendering for non-mermaid code blocks
+            return undefined as unknown as MermaidNodeView
+          }
         }
       })
 
@@ -128,7 +144,28 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         onChange(markdown, countWords(text), text.length)
       }
 
+      // Watch for theme changes (dark class toggle on html element)
+      // to re-render mermaid diagrams with correct colors
+      const themeObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+          if (mutation.attributeName === 'class') {
+            // Theme changed, re-initialize mermaid and re-render diagrams
+            reinitializeMermaidForTheme()
+            mermaidNodeViews.forEach((nodeView) => {
+              nodeView.reRenderForTheme()
+            })
+          }
+        }
+      })
+
+      themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class']
+      })
+
       return () => {
+        themeObserver.disconnect()
+        mermaidNodeViews.clear()
         view.destroy()
         viewRef.current = null
       }
