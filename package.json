@@ -120,7 +120,8 @@
     "mac": {
       "target": "dmg",
       "category": "public.app-category.productivity",
-      "icon": "resources/icons/icon.png"
+      "icon": "resources/icons/icon.png",
+      "artifactName": "${productName}-${version}.${ext}"
     },
     "win": {
       "target": "nsis",
