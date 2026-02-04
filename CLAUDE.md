@@ -74,30 +74,30 @@ Use the `/publish-new-version` command to start the release process. This will g
 1. **Analyzing changes** - Review commits since the last release tag
 2. **Determining version** - Choose appropriate semver bump (major/minor/patch)
 3. **Writing release notes** - Create user-friendly changelog
-4. **Running the release script** - Automate the entire release
+4. **Bumping version** - Update package.json
+5. **Creating tag** - Push annotated tag with release notes
 
-### Release Script
+### GitHub Actions Automation
 
-The automated release script is at `scripts/release.sh`. It handles:
-- Version update in package.json
-- Running all quality checks (lint, typecheck, tests, build)
-- Building AppImage
-- Creating git tag and pushing to GitHub
-- Creating GitHub release with AppImage attached
-- Updating and publishing to AUR
+Once the tag is pushed, GitHub Actions (`.github/workflows/release.yml`) automatically:
 
-Usage:
-```bash
-./scripts/release.sh <version> "<release_notes>"
-```
+1. Builds AppImage on Linux runner
+2. Builds DMG on macOS runner
+3. Creates GitHub Release with both artifacts
+4. Updates Homebrew tap (`benquemax/homebrew-markus-the-editor`)
+5. Updates AUR package (`markus-bin`)
+
+Required repository secrets:
+- `HOMEBREW_TAP_TOKEN` - GitHub PAT with repo access to homebrew-markus-the-editor
+- `AUR_SSH_PRIVATE_KEY` - SSH private key registered with AUR
 
 ### Distribution Channels
 
-- **GitHub Releases**: AppImage downloads at https://github.com/benquemax/markus-the-editor/releases
-- **AUR**: `markus-bin` package for Arch Linux users
+- **GitHub Releases**: https://github.com/benquemax/markus-the-editor/releases
+- **Homebrew (macOS)**: `brew tap benquemax/markus-the-editor && brew install --cask markus`
+- **AUR (Arch Linux)**: `yay -S markus-bin`
 
 ### AUR Package
 
-The AUR package files are maintained in two locations:
-- `aur/PKGBUILD` - Source of truth in main repo (updated by release script)
-- `mnt/markus-bin/` - Cloned AUR repo for publishing (managed by release script)
+The AUR package files are maintained in:
+- `aur/PKGBUILD` - Source of truth in main repo (updated by GitHub Actions)

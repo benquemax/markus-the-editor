@@ -43,47 +43,59 @@ Be concise but informative. Group related changes together.
 
 ## Step 4: Pre-flight Checks
 
-Before running the release script, verify:
+Before releasing, verify:
 
 1. You are on the `main` branch
 2. Working tree is clean (no uncommitted changes)
 3. All tests pass: `npm test`
-4. Build succeeds: `npm run build`
-5. GitHub CLI is authenticated: `gh auth status`
+4. Lint passes: `npm run lint`
+5. Typecheck passes: `npm run typecheck`
+6. Build succeeds: `npm run build`
 
-## Step 5: Run the Release Script
+## Step 5: Bump Version and Create Tag
 
-Execute the release script with version and notes:
-
+1. Update version in package.json:
 ```bash
-./scripts/release.sh <version> "<release_notes>"
+npm version <version> --no-git-tag-version
 ```
 
-Example:
+2. Commit the version bump:
 ```bash
-./scripts/release.sh 0.2.0 "## What's New
-
-- Feature: Added dark mode support
-- Fix: Fixed save dialog appearing behind window
-- Improvement: Better keyboard shortcuts"
+git add package.json
+git commit -m "chore: Bump version to <version>"
 ```
 
-## What the Script Does
+3. Create an annotated tag with the release notes:
+```bash
+git tag -a v<version> -m "<release_notes>"
+```
 
-1. Updates version in package.json
-2. Runs lint, typecheck, tests, and build
-3. Creates AppImage in release/ directory
-4. Commits version bump and creates git tag
-5. Pushes to GitHub
-6. Creates GitHub release with AppImage attached
-7. Updates and publishes to AUR (markus-bin)
+4. Push commit and tag:
+```bash
+git push origin main
+git push origin v<version>
+```
+
+## What Happens Next (Automated)
+
+Once you push the tag, GitHub Actions automatically:
+
+1. Builds AppImage on Linux
+2. Builds DMG on macOS
+3. Creates GitHub Release with both artifacts
+4. Updates Homebrew tap (benquemax/homebrew-markus-the-editor)
+5. Updates AUR package (markus-bin)
 
 ## After Release
 
 The release will be available at:
 - GitHub: https://github.com/benquemax/markus-the-editor/releases
-- AUR: https://aur.archlinux.org/packages/markus-bin
+- Homebrew: `brew tap benquemax/markus-the-editor && brew install --cask markus`
+- AUR: `yay -S markus-bin`
 
-Users can install via:
-- AppImage: Download and run directly
-- AUR: `yay -S markus-bin` or `paru -S markus-bin`
+## Required GitHub Secrets
+
+For the automation to work, these secrets must be configured in the repository:
+
+- `HOMEBREW_TAP_TOKEN`: GitHub PAT with repo access to homebrew-markus-the-editor
+- `AUR_SSH_PRIVATE_KEY`: SSH private key registered with AUR
