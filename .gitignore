@@ -26,8 +26,7 @@ npm-debug.log*
 # Test coverage
 coverage/
 
-# Lock files (using pnpm)
-package-lock.json
+# Lock files (not using yarn)
 yarn.lock
 
 # Temporary files
