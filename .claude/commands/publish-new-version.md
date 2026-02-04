@@ -81,7 +81,7 @@ Example:
 ## After Release
 
 The release will be available at:
-- GitHub: https://github.com/erkkimon/markus-the-editor/releases
+- GitHub: https://github.com/benquemax/markus-the-editor/releases
 - AUR: https://aur.archlinux.org/packages/markus-bin
 
 Users can install via:

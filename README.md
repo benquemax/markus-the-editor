@@ -16,6 +16,30 @@ A local, cross-platform WYSIWYG markdown editor built with Electron, React, and 
 - **PDF Export**: Export your documents to PDF
 - **External File Watching**: Detects changes made to files outside the editor
 
+## Installation
+
+### macOS (Homebrew)
+
+```bash
+brew tap benquemax/markus-the-editor
+brew install --cask markus
+```
+
+### Arch Linux (AUR)
+
+```bash
+yay -S markus-bin
+```
+
+### Linux (AppImage)
+
+Download the latest AppImage from [GitHub Releases](https://github.com/benquemax/markus-the-editor/releases), make it executable, and run:
+
+```bash
+chmod +x Markus-*.AppImage
+./Markus-*.AppImage
+```
+
 ## Tech Stack
 
 - **Electron 28+** - Desktop application shell

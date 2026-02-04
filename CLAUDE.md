@@ -93,7 +93,7 @@ Usage:
 
 ### Distribution Channels
 
-- **GitHub Releases**: AppImage downloads at https://github.com/erkkimon/markus-the-editor/releases
+- **GitHub Releases**: AppImage downloads at https://github.com/benquemax/markus-the-editor/releases
 - **AUR**: `markus-bin` package for Arch Linux users
 
 ### AUR Package

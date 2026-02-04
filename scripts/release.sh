@@ -219,7 +219,7 @@ create_github_release() {
         --notes "$notes" \
         "$appimage"
 
-    log_info "GitHub release created: https://github.com/erkkimon/markus-the-editor/releases/tag/v$version"
+    log_info "GitHub release created: https://github.com/benquemax/markus-the-editor/releases/tag/v$version"
 }
 
 #
@@ -347,7 +347,7 @@ main() {
     echo "  Release v$VERSION completed!"
     echo "========================================"
     echo ""
-    echo "GitHub: https://github.com/erkkimon/markus-the-editor/releases/tag/v$VERSION"
+    echo "GitHub: https://github.com/benquemax/markus-the-editor/releases/tag/v$VERSION"
     echo "AUR:    https://aur.archlinux.org/packages/markus-bin"
     echo ""
 }
