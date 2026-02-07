@@ -4,6 +4,8 @@
  * Handles reading and writing Markus settings from YAML configuration.
  * Settings are stored at ~/.config/markus-the-editor/settings.yaml
  * following the XDG Base Directory specification.
+ *
+ * Supports both single-agent (legacy) and multi-agent configurations.
  */
 
 import { app } from 'electron'
@@ -11,7 +13,8 @@ import path from 'path'
 import fs from 'fs/promises'
 import { existsSync } from 'fs'
 import yaml from 'js-yaml'
-import { MarkusSettings, DEFAULT_MARKUS_SETTINGS } from './types'
+import { MarkusSettings, DEFAULT_MARKUS_SETTINGS, AgentType, AgentSettings } from './types'
+import { RAGSettings } from './agents/types'
 
 /**
  * Gets the config directory path following XDG spec.
@@ -61,7 +64,35 @@ export async function readSettings(): Promise<MarkusSettings> {
         ...parsed?.search
       },
       defaultPlanningMode: parsed?.defaultPlanningMode ?? DEFAULT_MARKUS_SETTINGS.defaultPlanningMode,
-      yoloMode: parsed?.yoloMode ?? DEFAULT_MARKUS_SETTINGS.yoloMode
+      yoloMode: parsed?.yoloMode ?? DEFAULT_MARKUS_SETTINGS.yoloMode,
+      // Multi-agent settings (use parsed if present, otherwise use defaults)
+      agents: parsed?.agents ? {
+        defaults: {
+          ...DEFAULT_MARKUS_SETTINGS.agents?.defaults,
+          ...parsed.agents.defaults
+        },
+        orchestrator: parsed.agents.orchestrator,
+        editor: parsed.agents.editor,
+        research: parsed.agents.research,
+        critique: parsed.agents.critique,
+        style: parsed.agents.style,
+        creative: parsed.agents.creative
+      } : DEFAULT_MARKUS_SETTINGS.agents,
+      // RAG settings
+      rag: parsed?.rag ? {
+        ...DEFAULT_MARKUS_SETTINGS.rag,
+        ...parsed.rag,
+        embeddings: {
+          ...DEFAULT_MARKUS_SETTINGS.rag?.embeddings,
+          ...parsed.rag.embeddings
+        },
+        chunking: {
+          ...DEFAULT_MARKUS_SETTINGS.rag?.chunking,
+          ...parsed.rag.chunking
+        }
+      } : DEFAULT_MARKUS_SETTINGS.rag,
+      // Model presets
+      modelPresets: parsed?.modelPresets || DEFAULT_MARKUS_SETTINGS.modelPresets
     }
   } catch (error) {
     console.error('Failed to parse settings.yaml:', error)
@@ -130,12 +161,14 @@ llm:
   # API endpoint URL
   # For OpenAI: https://api.openai.com/v1/chat/completions
   # For Anthropic: https://api.anthropic.com/v1/messages
+  # For Ollama: http://localhost:11434/v1
   apiEndpoint: "https://api.openai.com/v1/chat/completions"
   # API key (keep this secret!)
   apiKey: ""
   # Model to use
   # OpenAI: gpt-4o-mini, gpt-4o, gpt-4-turbo
   # Anthropic: claude-3-5-sonnet-20241022, claude-3-opus-20240229
+  # Ollama: devstral, ministral, llama3.1
   model: "gpt-4o-mini"
   # Maximum tokens for response
   maxTokens: 4096
@@ -154,6 +187,75 @@ search:
 defaultPlanningMode: true
 # YOLO mode executes all tools without approval (use with caution!)
 yoloMode: false
+
+# Multi-Agent System Configuration
+# Each agent can use a different model. Smaller models work well for specialized tasks.
+# Uncomment and configure to enable multi-agent mode.
+#
+# agents:
+#   # Default settings for all agents (used when agent-specific settings not provided)
+#   defaults:
+#     model: "ministral-8b"
+#     endpoint: "http://localhost:11434/v1"
+#     maxTokens: 4096
+#     temperature: 0.7
+#
+#   # Orchestrator: coordinates tasks (recommended: larger model)
+#   orchestrator:
+#     model: "devstral-small"
+#     maxTokens: 8192
+#
+#   # Editor: file modifications (recommended: small model, low temperature)
+#   editor:
+#     temperature: 0.3
+#
+#   # Research: file search and RAG queries
+#   research:
+#     maxTokens: 6144
+#
+#   # Critique: quality review
+#   critique:
+#     maxTokens: 6144
+#
+#   # Style: formatting consistency
+#   style:
+#     maxTokens: 4096
+#
+#   # Creative: ideas and brainstorming (recommended: larger model)
+#   creative:
+#     model: "devstral-small"
+#     temperature: 0.8
+
+# RAG (Retrieval-Augmented Generation) Settings
+# Enables semantic search across your documents
+rag:
+  enabled: true
+  embeddings:
+    # Provider: "local" (ONNX), "api" (use LLM endpoint), "tfidf" (fallback)
+    provider: "local"
+    model: "all-MiniLM-L6-v2"
+  chunking:
+    maxChunkSize: 512
+    overlap: 50
+
+# Model Presets for quick configuration
+modelPresets:
+  local-small:
+    name: "Local Small (Ministral 8B)"
+    endpoint: "http://localhost:11434/v1"
+    model: "ministral-8b"
+  local-medium:
+    name: "Local Medium (Devstral 24B)"
+    endpoint: "http://localhost:11434/v1"
+    model: "devstral-small"
+  openai-mini:
+    name: "OpenAI GPT-4o Mini"
+    endpoint: "https://api.openai.com/v1"
+    model: "gpt-4o-mini"
+  openai-4o:
+    name: "OpenAI GPT-4o"
+    endpoint: "https://api.openai.com/v1"
+    model: "gpt-4o"
 `
 
   await fs.writeFile(settingsPath, defaultContent, 'utf-8')
@@ -181,4 +283,70 @@ export function validateSettings(settings: MarkusSettings): { valid: boolean; er
     valid: errors.length === 0,
     errors
   }
+}
+
+// ============================================================================
+// Multi-Agent Settings Helpers
+// ============================================================================
+
+/**
+ * Get effective settings for an agent type.
+ * Merges agent-specific settings with defaults.
+ */
+export function getAgentSettings(
+  settings: MarkusSettings,
+  agentType: AgentType
+): AgentSettings {
+  const agents = settings.agents || DEFAULT_MARKUS_SETTINGS.agents!
+  const defaults = agents.defaults || {}
+  const agentSpecific = agents[agentType] || {}
+
+  // Use main LLM settings as ultimate fallback
+  return {
+    model: agentSpecific.model || defaults.model || settings.llm.model,
+    endpoint: agentSpecific.endpoint || defaults.endpoint || settings.llm.apiEndpoint,
+    apiKey: agentSpecific.apiKey || defaults.apiKey || settings.llm.apiKey,
+    maxTokens: agentSpecific.maxTokens || defaults.maxTokens || settings.llm.maxTokens || 4096,
+    temperature: agentSpecific.temperature ?? defaults.temperature ?? settings.llm.temperature ?? 0.7,
+    timeout: agentSpecific.timeout || defaults.timeout || 60000
+  }
+}
+
+/**
+ * Get RAG settings with defaults.
+ */
+export function getRAGSettings(settings: MarkusSettings): RAGSettings {
+  return settings.rag || DEFAULT_MARKUS_SETTINGS.rag!
+}
+
+/**
+ * Check if multi-agent mode is enabled.
+ * Multi-agent is enabled if the agents section is present.
+ */
+export function isMultiAgentEnabled(settings: MarkusSettings): boolean {
+  return !!settings.agents
+}
+
+/**
+ * Get all agent settings.
+ */
+export function getAllAgentSettings(
+  settings: MarkusSettings
+): Record<AgentType, AgentSettings> {
+  const agentTypes: AgentType[] = [
+    'orchestrator',
+    'editor',
+    'research',
+    'critique',
+    'style',
+    'creative'
+  ]
+
+  const result: Record<AgentType, AgentSettings> = {} as Record<AgentType, AgentSettings>
+
+  for (const type of agentTypes) {
+    result[type] = getAgentSettings(settings, type)
+  }
+
+  return result
 }

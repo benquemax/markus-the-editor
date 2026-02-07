@@ -8,7 +8,7 @@
 import fs from 'fs/promises'
 import path from 'path'
 import { existsSync } from 'fs'
-import { ToolDefinition, ToolResult, ToolContext, MemoryUpdateRequest } from './types'
+import { ToolDefinition, ToolResult, ToolContext, MemoryUpdateRequest, Task } from './types'
 import {
   validateReadPath,
   validateWritePath,
@@ -18,6 +18,22 @@ import {
   isDirectory,
   PathSecurityError
 } from './security'
+import {
+  isInitialized as isMultiAgentInitialized,
+  routeUserMessage
+} from './multiAgent'
+import { AgentType } from './agents/types'
+import {
+  loadTaskList,
+  saveTaskList,
+  createTaskList,
+  addTask,
+  updateTaskStatus,
+  updateTaskDescription,
+  removeTask,
+  completeTasks,
+  formatTaskListForPrompt
+} from './tasks'
 
 // ============================================================================
 // Tool Definitions
@@ -220,6 +236,164 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       },
       required: ['scope', 'action', 'section', 'content']
     }
+  },
+  // Agent delegation tools - consult specialist agents for specific tasks
+  {
+    name: 'consult_research_agent',
+    description: 'Ask the Research agent to search files, analyze code, or gather information. Use for deep file exploration and understanding.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: 'What you want the research agent to find or analyze'
+        },
+        context: {
+          type: 'string',
+          description: 'Additional context about what you are working on'
+        }
+      },
+      required: ['task']
+    }
+  },
+  {
+    name: 'consult_critique_agent',
+    description: 'Ask the Critique agent to review content, check for issues, or validate your work. Use for quality assurance.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: 'What you want reviewed or critiqued'
+        },
+        content: {
+          type: 'string',
+          description: 'The content to review (optional if referring to a file)'
+        }
+      },
+      required: ['task']
+    }
+  },
+  {
+    name: 'consult_style_agent',
+    description: 'Ask the Style agent to improve formatting, voice, tone, or consistency. Use for polishing text.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: 'What style improvements you need'
+        },
+        content: {
+          type: 'string',
+          description: 'The content to style (optional if referring to a file)'
+        }
+      },
+      required: ['task']
+    }
+  },
+  {
+    name: 'consult_creative_agent',
+    description: 'Ask the Creative agent for ideas, brainstorming, or creative solutions. Use for generating options or thinking outside the box.',
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: 'What creative input you need'
+        },
+        context: {
+          type: 'string',
+          description: 'Background context for the creative task'
+        }
+      },
+      required: ['task']
+    }
+  },
+  // Thought loop tools - for proactive agent behavior
+  {
+    name: 'consult_boss',
+    description: 'Show a message to the user. The boss can ONLY see content inside this tool call. Any text outside tool calls is invisible to the user. Use this to communicate progress, findings, or results.',
+    parameters: {
+      type: 'object',
+      properties: {
+        message: {
+          type: 'string',
+          description: 'The message to display to the user (supports markdown)'
+        },
+        type: {
+          type: 'string',
+          description: 'Message type for styling',
+          enum: ['info', 'success', 'warning', 'error', 'progress']
+        }
+      },
+      required: ['message']
+    }
+  },
+  {
+    name: 'update_tasks',
+    description: 'Update the task list. Call this first in each iteration to track your progress and maintain focus.',
+    parameters: {
+      type: 'object',
+      properties: {
+        add: {
+          type: 'array',
+          description: 'Tasks to add. Each task has a description and optional priority (higher = more important).'
+        },
+        complete: {
+          type: 'array',
+          description: 'Task IDs to mark as done'
+        },
+        remove: {
+          type: 'array',
+          description: 'Task IDs to remove from the list'
+        },
+        update: {
+          type: 'array',
+          description: 'Tasks to update. Each update has id and optional status/description.'
+        }
+      }
+    }
+  },
+  {
+    name: 'ask_user',
+    description: 'Ask the user a question with predefined clickable options. This PAUSES the thought loop until the user responds. Use sparingly - only when you truly need user input to proceed.',
+    parameters: {
+      type: 'object',
+      properties: {
+        question: {
+          type: 'string',
+          description: 'The question to ask the user'
+        },
+        options: {
+          type: 'array',
+          description: 'Clickable options (2-5). An "Other" option with text input is always added automatically.'
+        },
+        reason: {
+          type: 'string',
+          description: 'Brief explanation of why this input is needed'
+        }
+      },
+      required: ['question', 'options']
+    }
+  },
+  {
+    name: 'request_task_approval',
+    description: 'Request approval when all tasks are complete. This PAUSES the thought loop for user review. Only call this when you have finished all the work.',
+    parameters: {
+      type: 'object',
+      properties: {
+        summary: {
+          type: 'string',
+          description: 'Summary of the completed work'
+        },
+        files_changed: {
+          type: 'array',
+          description: 'List of files that were modified'
+        }
+      },
+      required: ['summary']
+    }
   }
 ]
 
@@ -280,6 +454,23 @@ export async function executeTool(
         return executeGetWorkspaceFolders(context)
       case 'update_memory':
         return await executeUpdateMemory(args)
+      case 'consult_research_agent':
+        return await executeConsultAgent('research', args, context)
+      case 'consult_critique_agent':
+        return await executeConsultAgent('critique', args, context)
+      case 'consult_style_agent':
+        return await executeConsultAgent('style', args, context)
+      case 'consult_creative_agent':
+        return await executeConsultAgent('creative', args, context)
+      // Thought loop tools
+      case 'consult_boss':
+        return executeConsultBoss(args)
+      case 'update_tasks':
+        return await executeUpdateTasks(args, context)
+      case 'ask_user':
+        return executeAskUser(args)
+      case 'request_task_approval':
+        return executeRequestApproval(args)
       default:
         return { success: false, error: `Unknown tool: ${toolName}` }
     }
@@ -312,7 +503,9 @@ async function executeReadFile(
 
   const content = await fs.readFile(validatedPath, 'utf-8')
   // Truncate very long files to prevent context overflow
-  return { success: true, result: truncateResult(content) }
+  // Include file path in result so LLM knows which file it's seeing
+  const formattedResult = `File: ${filePath}\n${'─'.repeat(40)}\n${truncateResult(content)}`
+  return { success: true, result: formattedResult }
 }
 
 async function executeListDirectory(
@@ -657,6 +850,245 @@ async function executeUpdateMemory(args: Record<string, unknown>): Promise<ToolR
     result: {
       type: 'memory_update_proposal',
       request
+    }
+  }
+}
+
+/**
+ * Consult a specialist agent for help with a task.
+ * Routes the request through the multi-agent system.
+ */
+async function executeConsultAgent(
+  agentType: AgentType,
+  args: Record<string, unknown>,
+  context: ToolContext
+): Promise<ToolResult> {
+  const task = String(args.task || '')
+  const additionalContext = args.context ? String(args.context) : args.content ? String(args.content) : ''
+
+  if (!task) {
+    return { success: false, error: 'Task description is required' }
+  }
+
+  // Check if multi-agent system is available
+  if (!isMultiAgentInitialized()) {
+    // Fall back to a helpful message if multi-agent is not enabled
+    return {
+      success: true,
+      result: `[${agentType.toUpperCase()} AGENT SIMULATION]\n\n` +
+        `Task: ${task}\n` +
+        `${additionalContext ? `Context: ${additionalContext}\n` : ''}` +
+        `\nNote: Multi-agent system is not enabled. To enable specialist agents, ` +
+        `add an "agents" section to your settings.yaml file.\n\n` +
+        `For now, I'll help you directly with this ${agentType} task.`
+    }
+  }
+
+  try {
+    // Route the task to the specialist agent
+    const agentTask = await routeUserMessage(
+      `[From Orchestrator] ${task}${additionalContext ? `\n\nContext: ${additionalContext}` : ''}`,
+      {
+        targetAgent: agentType,
+        workspaceFolders: context.workspaceFolders,
+        openFiles: context.openFiles
+      }
+    )
+
+    if (!agentTask) {
+      return { success: false, error: `Failed to create task for ${agentType} agent` }
+    }
+
+    // Wait for the task to complete (with timeout)
+    const timeout = 60000 // 60 seconds
+    const startTime = Date.now()
+
+    while (agentTask.status !== 'complete' && agentTask.status !== 'failed') {
+      if (Date.now() - startTime > timeout) {
+        return {
+          success: false,
+          error: `${agentType} agent task timed out after ${timeout / 1000} seconds`
+        }
+      }
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+
+    if (agentTask.status === 'failed') {
+      return {
+        success: false,
+        error: `${agentType} agent failed: ${agentTask.error || 'Unknown error'}`
+      }
+    }
+
+    // Return the agent's result
+    const result = agentTask.result
+    return {
+      success: true,
+      result: `[${agentType.toUpperCase()} AGENT RESPONSE]\n\n${
+        typeof result === 'string' ? result : JSON.stringify(result, null, 2)
+      }`
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to consult ${agentType} agent: ${String(error)}`
+    }
+  }
+}
+
+// ============================================================================
+// Thought Loop Tool Implementations
+// ============================================================================
+
+/**
+ * Shows a message to the user.
+ * Non-blocking - the thought loop continues after this.
+ */
+function executeConsultBoss(args: Record<string, unknown>): ToolResult {
+  const message = String(args.message || '')
+  const messageType = (args.type as string) || 'info'
+
+  if (!message) {
+    return { success: false, error: 'Message is required' }
+  }
+
+  // The message will be rendered in the UI via the uiData field
+  return {
+    success: true,
+    result: 'Message shown to user',
+    uiData: {
+      type: 'consult_boss',
+      message,
+      messageType: messageType as 'info' | 'success' | 'warning' | 'error' | 'progress'
+    }
+  }
+}
+
+/**
+ * Updates the task list for the current conversation.
+ * Non-blocking - returns the updated task list for the prompt.
+ */
+async function executeUpdateTasks(
+  args: Record<string, unknown>,
+  context: ToolContext
+): Promise<ToolResult> {
+  if (!context.filebarId || !context.conversationId) {
+    return { success: false, error: 'Missing filebarId or conversationId in context' }
+  }
+
+  // Load or create task list
+  let taskList = await loadTaskList(context.filebarId, context.conversationId)
+  if (!taskList) {
+    taskList = createTaskList(context.conversationId)
+  }
+
+  // Process additions
+  const toAdd = args.add as Array<{ description: string; priority?: number }> | undefined
+  if (toAdd && Array.isArray(toAdd)) {
+    for (const task of toAdd) {
+      if (task.description) {
+        addTask(taskList, task.description, task.priority || 0)
+      }
+    }
+  }
+
+  // Process completions
+  const toComplete = args.complete as string[] | undefined
+  if (toComplete && Array.isArray(toComplete)) {
+    completeTasks(taskList, toComplete)
+  }
+
+  // Process removals
+  const toRemove = args.remove as string[] | undefined
+  if (toRemove && Array.isArray(toRemove)) {
+    for (const taskId of toRemove) {
+      removeTask(taskList, taskId)
+    }
+  }
+
+  // Process updates
+  const toUpdate = args.update as Array<{
+    id: string
+    status?: Task['status']
+    description?: string
+  }> | undefined
+  if (toUpdate && Array.isArray(toUpdate)) {
+    for (const update of toUpdate) {
+      if (update.status) {
+        updateTaskStatus(taskList, update.id, update.status)
+      }
+      if (update.description) {
+        updateTaskDescription(taskList, update.id, update.description)
+      }
+    }
+  }
+
+  // Save the updated task list
+  console.log('[Markus] Saving task list:', taskList.tasks.length, 'tasks')
+  console.log('[Markus] Task descriptions:', taskList.tasks.map(t => `[${t.status}] ${t.description}`))
+  await saveTaskList(context.filebarId, taskList)
+
+  // Return the formatted task list for injection into the next prompt
+  return {
+    success: true,
+    result: formatTaskListForPrompt(taskList)
+  }
+}
+
+/**
+ * Asks the user a question with predefined options.
+ * BLOCKING - pauses the thought loop until user responds.
+ */
+function executeAskUser(args: Record<string, unknown>): ToolResult {
+  const question = String(args.question || '')
+  const options = args.options as string[] | undefined
+  const reason = args.reason ? String(args.reason) : undefined
+
+  if (!question) {
+    return { success: false, error: 'Question is required' }
+  }
+
+  if (!options || !Array.isArray(options) || options.length < 2) {
+    return { success: false, error: 'At least 2 options are required' }
+  }
+
+  if (options.length > 5) {
+    return { success: false, error: 'Maximum 5 options allowed' }
+  }
+
+  return {
+    success: true,
+    result: 'WAITING_FOR_USER_INPUT',
+    blocking: true,
+    uiData: {
+      type: 'ask_user',
+      question,
+      options: [...options, 'Other'],
+      reason
+    }
+  }
+}
+
+/**
+ * Requests approval when all tasks are complete.
+ * BLOCKING - pauses the thought loop for user review.
+ */
+function executeRequestApproval(args: Record<string, unknown>): ToolResult {
+  const summary = String(args.summary || '')
+  const filesChanged = args.files_changed as string[] | undefined
+
+  if (!summary) {
+    return { success: false, error: 'Summary is required' }
+  }
+
+  return {
+    success: true,
+    result: 'WAITING_FOR_APPROVAL',
+    blocking: true,
+    uiData: {
+      type: 'approval',
+      summary,
+      filesChanged: filesChanged || []
     }
   }
 }

@@ -431,10 +431,21 @@ export class LLMClient {
     const decoder = new TextDecoder()
     let buffer = ''
     let chunkCount = 0
+    // Timeout between chunks (60 seconds) - if LLM stops sending data, abort
+    const CHUNK_TIMEOUT_MS = 60000
 
     try {
       while (true) {
-        const { done, value } = await reader.read()
+        // Create a timeout promise that rejects if no data arrives
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Stream timeout: no data received for 60 seconds')), CHUNK_TIMEOUT_MS)
+        })
+
+        // Race between reading next chunk and timeout
+        const { done, value } = await Promise.race([
+          reader.read(),
+          timeoutPromise
+        ])
 
         if (done) {
           console.log(`[Markus] Stream done after ${chunkCount} chunks`)

@@ -4,6 +4,9 @@
  * Sets up all IPC handlers for the Markus AI agent feature.
  * This is the main integration point between the renderer process
  * and the backend Markus modules.
+ *
+ * Now uses the refactored thought loop with algorithmic context fabrication
+ * for better context management and debugging capabilities.
  */
 
 import { IpcMain, BrowserWindow } from 'electron'
@@ -13,8 +16,6 @@ import {
   Conversation,
   ChatMessage,
   ToolCallRecord,
-  ToolContext,
-  LLMMessage,
   MemoryUpdateProposal
 } from './types'
 import {
@@ -22,10 +23,9 @@ import {
   writeSettings,
   ensureSettingsFile,
   getSettingsPath,
-  validateSettings
+  validateSettings,
+  isMultiAgentEnabled
 } from './settings'
-import { createLLMClient, generateToolSchema } from './llm'
-import { TOOL_DEFINITIONS, executeTool } from './tools'
 import {
   createConversation,
   saveConversation,
@@ -35,10 +35,43 @@ import {
   deleteConversation,
   getFilebarId
 } from './conversations'
-import { getAllContext, proposeMemoryUpdate, applyMemoryUpdate } from './memory'
+import { proposeMemoryUpdate, applyMemoryUpdate } from './memory'
+import {
+  loadTaskList,
+  deleteTaskList
+} from './tasks'
+
+// Thought loop imports
+import {
+  createLog,
+  saveLog,
+  loadLog,
+  addUserMessage,
+  runThoughtLoop,
+  convertToOldFormat
+} from './thoughtLoop'
+import type { ConversationLog, ThoughtLoopEvent } from './thoughtLoop'
+
+// Multi-agent system imports
+import {
+  initializeMultiAgentSystem,
+  shutdownMultiAgentSystem,
+  getAgentStatuses,
+  getRAGIndexStatus,
+  reindexWorkspace,
+  onAgentStatusChange,
+  onTaskCreated,
+  onTaskCompleted,
+  onError,
+  isInitialized as isMultiAgentInitialized
+} from './multiAgent'
+import { agentEventBus } from './agents'
 
 /** Active abort controllers for cancellation */
 const activeRequests = new Map<string, AbortController>()
+
+/** Active conversation logs (in-memory cache for current sessions) */
+const activeConversationLogs = new Map<string, ConversationLog>()
 
 /** Pending tool approvals */
 const pendingToolApprovals = new Map<string, {
@@ -48,85 +81,6 @@ const pendingToolApprovals = new Map<string, {
 
 /** Pending memory update proposals */
 const pendingMemoryProposals = new Map<string, MemoryUpdateProposal>()
-
-/**
- * Builds the system prompt for Markus.
- */
-async function buildSystemPrompt(workspaceFolders: string[]): Promise<string> {
-  const context = await getAllContext(workspaceFolders)
-  const toolSchema = generateToolSchema(TOOL_DEFINITIONS)
-
-  let systemPrompt = `You are Markus, an AI assistant integrated into a markdown editor.
-
-CRITICAL BEHAVIOR RULES (MUST FOLLOW):
-1. NEVER introduce yourself. NEVER explain what you can do. NEVER greet the user. Just DO the task.
-2. When the user asks you to do something, START DOING IT IMMEDIATELY using tools.
-3. Your FIRST response to any task request MUST include tool calls - no exceptions.
-4. Do NOT say "I'll help you with..." or "Let me..." - just USE THE TOOLS.
-5. After receiving tool results, CONTINUE working - call more tools or provide your analysis.
-6. Keep text responses SHORT. Focus on actions and results, not explanations.
-7. If you find yourself repeating a previous response, STOP and try a different approach.
-
-WRONG (never do this):
-- "What would you like me to help you with?"
-- "I'd be happy to help! Let me..."
-- "Hello! I'm Markus..."
-
-RIGHT (always do this):
-- [immediately use get_workspace_folders tool]
-- [immediately use list_directory tool]
-- [provide analysis based on tool results]
-
-${toolSchema}
-
-`
-
-  if (context.systemInstructions) {
-    systemPrompt += `## Global Instructions\n\n${context.systemInstructions}\n\n`
-  }
-
-  if (context.projectInstructions) {
-    systemPrompt += `## Project Instructions\n\n${context.projectInstructions}\n\n`
-  }
-
-  if (context.systemMemory) {
-    systemPrompt += `## Memory (Global)\n\n${context.systemMemory}\n\n`
-  }
-
-  if (context.projectMemory) {
-    systemPrompt += `## Memory (Project)\n\n${context.projectMemory}\n\n`
-  }
-
-  return systemPrompt
-}
-
-/**
- * Converts conversation messages to LLM format.
- * Filters out empty assistant messages which can occur from failed requests.
- */
-function conversationToLLMMessages(
-  conversation: Conversation,
-  systemPrompt: string
-): LLMMessage[] {
-  const messages: LLMMessage[] = [
-    { role: 'system', content: systemPrompt }
-  ]
-
-  for (const msg of conversation.messages) {
-    if (msg.role === 'user' || msg.role === 'assistant') {
-      // Skip empty assistant messages (can happen from failed/aborted requests)
-      if (msg.role === 'assistant' && !msg.content.trim()) {
-        continue
-      }
-      messages.push({
-        role: msg.role,
-        content: msg.content
-      })
-    }
-  }
-
-  return messages
-}
 
 /**
  * Sets up all Markus IPC handlers.
@@ -247,17 +201,43 @@ export function setupMarkusHandlers(
       return { success: false, error: validation.errors.join(', ') }
     }
 
-    // Add user message
-    const userMessage: ChatMessage = {
-      id: uuidv4(),
-      role: 'user',
-      content: message,
-      timestamp: Date.now(),
-      status: 'complete'
-    }
-    conversation.messages.push(userMessage)
+    const workspaceFolders = getWorkspaceFolders()
+    const filebarId = getFilebarId(workspaceFolders)
 
-    // Create assistant message placeholder
+    // Get or create conversation log
+    let log = activeConversationLogs.get(conversation.id)
+    if (!log) {
+      // Try to load from disk
+      log = await loadLog(filebarId, conversation.id)
+
+      if (!log) {
+        // Create new log
+        log = createLog(filebarId, planningMode ? 'planning' : 'execution')
+        log.id = conversation.id // Use same ID as conversation for compatibility
+      }
+
+      activeConversationLogs.set(conversation.id, log)
+    }
+
+    // Update mode if changed
+    log.mode = planningMode ? 'planning' : 'execution'
+
+    // Add user message to log (skip if empty - this is a continuation from blocking tool)
+    if (message.trim()) {
+      addUserMessage(log, message)
+
+      // Also add to old conversation format for UI compatibility
+      const userMessage: ChatMessage = {
+        id: uuidv4(),
+        role: 'user',
+        content: message,
+        timestamp: Date.now(),
+        status: 'complete'
+      }
+      conversation.messages.push(userMessage)
+    }
+
+    // Create assistant message placeholder for UI
     const assistantMessage: ChatMessage = {
       id: uuidv4(),
       role: 'assistant',
@@ -274,201 +254,106 @@ export function setupMarkusHandlers(
     activeRequests.set(conversation.id, abortController)
 
     try {
-      const workspaceFolders = getWorkspaceFolders()
-      const systemPrompt = await buildSystemPrompt(workspaceFolders)
-      const client = createLLMClient(settings.llm)
-
-      // Agentic loop - continue until no more tool calls
-      const MAX_ITERATIONS = 10
-      let iteration = 0
-      let currentAssistantMessage = assistantMessage
-      const previousResponses: string[] = [] // Track previous responses for deduplication
-
-      while (iteration < MAX_ITERATIONS) {
-        iteration++
-        console.log(`[Markus] Agentic loop iteration ${iteration}`)
-
-        const llmMessages = conversationToLLMMessages(conversation, systemPrompt)
-        // Remove the current streaming assistant message from LLM messages
-        llmMessages.pop()
-
-        // Stream response
-        let fullContent = ''
-        console.log('[Markus] Starting stream...')
-        for await (const chunk of client.chatStream(
-          llmMessages,
-          TOOL_DEFINITIONS,
-          abortController.signal
-        )) {
-          if (chunk.type === 'content' && chunk.content) {
-            fullContent += chunk.content
+      // Create event handler for UI updates
+      const handleEvent = (event: ThoughtLoopEvent) => {
+        switch (event.type) {
+          case 'llm_streaming':
             mainWindow.webContents.send('markus:messageChunk', {
               conversationId: conversation.id,
-              chunk: chunk.content
+              chunk: event.chunk
             })
-          }
-        }
-        console.log('[Markus] Stream complete. Full content length:', fullContent.length)
-        console.log('[Markus] Full content preview:', fullContent.slice(0, 200))
+            break
 
-        // Parse for tool calls (MD_JSON format)
-        const { textContent, toolCalls } = parseContentForToolCalls(fullContent)
-        // Strip any reasoning/thinking content that leaked into the response
-        const strippedContent = stripReasoningContent(textContent)
-        currentAssistantMessage.content = strippedContent
-
-        // Check for repetition - if the LLM is repeating itself, break the loop
-        const normalizedResponse = strippedContent.toLowerCase().trim().substring(0, 200)
-        if (normalizedResponse && previousResponses.some(prev =>
-          prev.toLowerCase().trim().substring(0, 200) === normalizedResponse
-        )) {
-          console.log('[Markus] Detected repetition, breaking agentic loop')
-          currentAssistantMessage.content += '\n\n*[I seem to be repeating myself. Please provide more specific instructions.]*'
-          break
-        }
-        previousResponses.push(strippedContent)
-
-        // If no tool calls, we're done
-        if (toolCalls.length === 0) {
-          console.log('[Markus] No tool calls, ending agentic loop')
-          break
-        }
-
-        // Execute tool calls
-        const toolResults: Array<{ name: string; result: string; success: boolean }> = []
-
-        for (const toolCall of toolCalls) {
-          const toolCallRecord: ToolCallRecord = {
-            id: toolCall.id,
-            name: toolCall.name,
-            arguments: toolCall.arguments,
-            status: 'pending',
-            startedAt: Date.now()
-          }
-
-          currentAssistantMessage.toolCalls = currentAssistantMessage.toolCalls || []
-          currentAssistantMessage.toolCalls.push(toolCallRecord)
-
-          mainWindow.webContents.send('markus:toolCallStarted', {
-            conversationId: conversation.id,
-            toolCall: toolCallRecord
-          })
-
-          // Check if approval needed
-          let shouldExecute = yoloMode
-
-          if (!shouldExecute) {
-            const isSafe = isSafeTool(toolCall.name)
-
-            if (planningMode) {
-              // Planning mode: require approval for ALL tools
-              shouldExecute = await waitForToolApproval(conversation.id, toolCallRecord)
-            } else if (isSafe) {
-              // Execution mode with safe tool: auto-execute
-              shouldExecute = true
-            } else {
-              // Execution mode with dangerous tool: require approval
-              shouldExecute = await waitForToolApproval(conversation.id, toolCallRecord)
+          case 'tool_started': {
+            // Convert to old format for UI compatibility
+            const toolCallRecord: ToolCallRecord = {
+              id: event.toolCall.id,
+              name: event.toolCall.name,
+              arguments: event.toolCall.arguments,
+              status: 'pending',
+              startedAt: event.toolCall.startedAt
             }
+            mainWindow.webContents.send('markus:toolCallStarted', {
+              conversationId: conversation.id,
+              toolCall: toolCallRecord
+            })
+            break
           }
 
-          if (shouldExecute) {
-            toolCallRecord.status = 'executing'
-
-            const context: ToolContext = {
-              workspaceFolders,
-              openFiles: getOpenFiles(),
-              mainWindow
-            }
-
-            const result = await executeTool(toolCall.name, toolCall.arguments, context)
-
-            toolCallRecord.status = result.success ? 'complete' : 'error'
-            toolCallRecord.result = result.result
-            toolCallRecord.error = result.error
-            toolCallRecord.completedAt = Date.now()
-
+          case 'tool_complete':
             mainWindow.webContents.send('markus:toolCallComplete', {
               conversationId: conversation.id,
-              toolCallId: toolCall.id,
-              result
+              toolCallId: event.toolCallId,
+              result: {
+                success: event.result.success,
+                result: event.result.data,
+                error: event.result.error
+              }
             })
+            break
 
-            // Auto-open created/edited files
-            if (result.openFile) {
-              mainWindow.webContents.send('file:openPath', result.openFile)
+          case 'loop_blocked':
+            if (event.uiData) {
+              mainWindow.webContents.send('markus:blockingTool', {
+                conversationId: conversation.id,
+                uiData: event.uiData
+              })
             }
+            break
 
-            // Collect result for continuation
-            toolResults.push({
-              name: toolCall.name,
-              result: result.success
-                ? (typeof result.result === 'string' ? result.result : JSON.stringify(result.result))
-                : `Error: ${result.error}`,
-              success: result.success
+          case 'error':
+            mainWindow.webContents.send('markus:requestError', {
+              conversationId: conversation.id,
+              error: event.message
             })
-          } else {
-            toolCallRecord.status = 'rejected'
-            toolCallRecord.completedAt = Date.now()
-            toolResults.push({
-              name: toolCall.name,
-              result: 'Tool call was rejected by user',
-              success: false
-            })
-          }
+            break
         }
+      }
 
-        // If all tools were rejected, stop the loop
-        if (toolResults.every(r => !r.success && r.result === 'Tool call was rejected by user')) {
-          console.log('[Markus] All tools rejected, ending agentic loop')
-          break
-        }
+      // Run thought loop with new controller
+      const result = await runThoughtLoop({
+        log,
+        settings,
+        workspaceFolders,
+        filebarId,
+        mainWindow,
+        getOpenFiles,
+        onEvent: handleEvent,
+        yoloMode,
+        waitForToolApproval,
+        abortSignal: abortController.signal
+      })
 
-        // Mark current assistant message as complete
-        currentAssistantMessage.status = 'complete'
+      // Save log
+      await saveLog(log)
 
-        // Add tool results as a user message for context
-        const toolResultsContent = toolResults.map(r =>
-          `Tool "${r.name}" result:\n${r.result}`
-        ).join('\n\n')
+      // Convert log to old conversation format for UI compatibility
+      const updatedConversation = convertToOldFormat(log)
 
-        const toolResultMessage: ChatMessage = {
-          id: uuidv4(),
-          role: 'user',
-          content: `[Tool Results]\n\n${toolResultsContent}\n\nPlease continue based on these results.`,
-          timestamp: Date.now(),
-          status: 'complete'
-        }
-        conversation.messages.push(toolResultMessage)
+      // Save old format too
+      await saveConversation(updatedConversation)
 
-        // Create new assistant message for the continuation
-        currentAssistantMessage = {
-          id: uuidv4(),
-          role: 'assistant',
-          content: '',
-          timestamp: Date.now(),
-          status: 'streaming',
-          isPlan: planningMode,
-          toolCalls: []
-        }
-        conversation.messages.push(currentAssistantMessage)
-
-        // Notify frontend of the continuation
-        mainWindow.webContents.send('markus:messageChunk', {
+      // Send task list update
+      const taskList = await loadTaskList(filebarId, conversation.id)
+      if (taskList) {
+        mainWindow.webContents.send('markus:tasksUpdated', {
           conversationId: conversation.id,
-          chunk: '' // Signal new message started
+          tasks: taskList.tasks
         })
       }
 
-      currentAssistantMessage.status = 'complete'
-      await saveConversation(conversation)
-
+      // Notify completion
       mainWindow.webContents.send('markus:requestComplete', {
         conversationId: conversation.id,
-        messageId: currentAssistantMessage.id
+        messageId: assistantMessage.id,
+        waitingForInput: result.waitingForInput
       })
 
-      return { success: true, conversation }
+      return {
+        success: true,
+        conversation: updatedConversation,
+        waitingForInput: result.waitingForInput
+      }
     } catch (error) {
       assistantMessage.status = 'error'
       assistantMessage.error = String(error)
@@ -517,6 +402,57 @@ export function setupMarkusHandlers(
   })
 
   // ========================================================================
+  // User Response Handlers (for blocking tools)
+  // ========================================================================
+
+  /**
+   * Handle user response to ask_user tool.
+   * Note: The actual message is added by the frontend before calling sendMessage.
+   * This handler is kept for potential future use (e.g., logging, validation).
+   */
+  ipcMain.handle('markus:submitUserResponse', async () => {
+    // Response message is now added by the frontend directly to the conversation
+    // before calling sendMessage with empty message to continue
+    return { success: true }
+  })
+
+  /**
+   * Handle task approval.
+   * Clears the task list and allows conversation to continue.
+   */
+  ipcMain.handle('markus:approveTask', async (_, args: {
+    conversationId: string
+  }) => {
+    const { conversationId } = args
+    const workspaceFolders = getWorkspaceFolders()
+    const filebarId = getFilebarId(workspaceFolders)
+
+    // Delete the task list
+    await deleteTaskList(filebarId, conversationId)
+
+    // Notify frontend
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.webContents.send('markus:tasksUpdated', {
+        conversationId,
+        tasks: []
+      })
+    }
+
+    return { success: true }
+  })
+
+  /**
+   * Get current task list for a conversation.
+   */
+  ipcMain.handle('markus:getTaskList', async (_, conversationId: string) => {
+    const workspaceFolders = getWorkspaceFolders()
+    const filebarId = getFilebarId(workspaceFolders)
+    const taskList = await loadTaskList(filebarId, conversationId)
+    return taskList ? taskList.tasks : []
+  })
+
+  // ========================================================================
   // Memory Handlers
   // ========================================================================
 
@@ -549,165 +485,125 @@ export function setupMarkusHandlers(
     pendingMemoryProposals.delete(proposalId)
     return { success: true }
   })
+
+  // ========================================================================
+  // Multi-Agent Status Handlers
+  // ========================================================================
+
+  ipcMain.handle('markus:getAgentStatuses', () => {
+    if (!isMultiAgentInitialized()) {
+      return []
+    }
+    return getAgentStatuses()
+  })
+
+  ipcMain.handle('markus:getRAGStatus', () => {
+    if (!isMultiAgentInitialized()) {
+      return {
+        indexing: false,
+        totalFiles: 0,
+        indexedFiles: 0,
+        totalChunks: 0,
+        lastUpdated: null
+      }
+    }
+    return getRAGIndexStatus()
+  })
+
+  ipcMain.handle('markus:reindexWorkspace', async () => {
+    if (!isMultiAgentInitialized()) {
+      return { success: false, error: 'Multi-agent system not initialized' }
+    }
+    try {
+      await reindexWorkspace()
+      return { success: true }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  // ========================================================================
+  // Multi-Agent Event Subscriptions
+  // ========================================================================
+
+  // Subscribe to agent status changes and forward to renderer
+  const unsubscribeAgentStatus = onAgentStatusChange((data) => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.webContents.send('markus:agentStatus', data)
+    }
+  })
+
+  // Subscribe to task events
+  const unsubscribeTaskCreated = onTaskCreated((data) => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.webContents.send('markus:taskCreated', data)
+    }
+  })
+
+  const unsubscribeTaskCompleted = onTaskCompleted((data) => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.webContents.send('markus:taskCompleted', data)
+    }
+  })
+
+  const unsubscribeError = onError((data) => {
+    const mainWindow = getMainWindow()
+    if (mainWindow) {
+      mainWindow.webContents.send('markus:agentError', data)
+    }
+  })
+
+  // Subscribe to thinking events from the event bus
+  const unsubscribeThinking = agentEventBus.on('agent:status', (data) => {
+    if (data.status === 'thinking' || data.status === 'executing') {
+      const mainWindow = getMainWindow()
+      if (mainWindow) {
+        mainWindow.webContents.send('markus:thinking', {
+          agent: data.agent,
+          status: data.status,
+          details: data.details
+        })
+      }
+    }
+  })
+
+  // Initialize multi-agent system on first settings load
+  const initMultiAgentIfNeeded = async () => {
+    if (isMultiAgentInitialized()) return
+
+    try {
+      const settings = await readSettings()
+      const folders = getWorkspaceFolders()
+
+      if (isMultiAgentEnabled(settings) && folders.length > 0) {
+        await initializeMultiAgentSystem(settings, folders)
+        console.log('[Markus] Multi-agent system initialized')
+      }
+    } catch (error) {
+      console.error('[Markus] Failed to initialize multi-agent system:', error)
+    }
+  }
+
+  // Call initialization (non-blocking)
+  initMultiAgentIfNeeded()
+
+  // Return cleanup function (for proper shutdown)
+  return () => {
+    unsubscribeAgentStatus()
+    unsubscribeTaskCreated()
+    unsubscribeTaskCompleted()
+    unsubscribeError()
+    unsubscribeThinking()
+    shutdownMultiAgentSystem()
+  }
 }
 
 // ============================================================================
 // Helper Functions
 // ============================================================================
-
-/**
- * Strips reasoning/thinking content from LLM responses.
- * Some models (like Kimi's thinking models) include internal reasoning
- * directly in the content field. This function attempts to extract just
- * the user-facing response.
- *
- * Patterns detected:
- * - Text before a greeting (Hello, Hi, Hey) that contains reasoning markers
- * - Reasoning markers: "Let me", "I should", "The user is", "I don't need to", etc.
- */
-function stripReasoningContent(content: string): string {
-  // Common reasoning pattern indicators
-  const reasoningPatterns = [
-    /^The user (is|has|wants|seems)/i,
-    /^Let me /i,
-    /^I (should|need to|will|don't need|can|cannot)/i,
-    /^Since /i,
-    /^First,? I/i,
-    /^Now I/i,
-    /^Looking at/i,
-    /^Based on/i,
-    /^Analyzing/i,
-  ]
-
-  // Check if content starts with reasoning patterns
-  const hasReasoningStart = reasoningPatterns.some(pattern => pattern.test(content.trim()))
-
-  if (!hasReasoningStart) {
-    return content
-  }
-
-  // Try to find where the actual response starts
-  // Common patterns: greeting, markdown heading, or direct statement
-  const responseStartPatterns = [
-    // Greetings
-    /(?:^|\n\n)(Hello[!,]?\s)/im,
-    /(?:^|\n\n)(Hi[!,]?\s)/im,
-    /(?:^|\n\n)(Hey[!,]?\s)/im,
-    /(?:^|\n\n)(Good (?:morning|afternoon|evening)[!,]?\s)/im,
-    // Markdown headings
-    /(?:^|\n\n)(#{1,3}\s+\w)/m,
-    // Direct statements that look like responses
-    /(?:^|\n\n)(I'd be happy to)/im,
-    /(?:^|\n\n)(I can help)/im,
-    /(?:^|\n\n)(Sure[!,]?\s)/im,
-    /(?:^|\n\n)(Absolutely[!,]?\s)/im,
-    /(?:^|\n\n)(Great question)/im,
-    /(?:^|\n\n)(Here's )/im,
-    /(?:^|\n\n)(Here are )/im,
-  ]
-
-  for (const pattern of responseStartPatterns) {
-    const match = content.match(pattern)
-    if (match && match.index !== undefined) {
-      // Found a response start - extract from there
-      const responseStart = match.index + (match[0].startsWith('\n') ? 2 : 0)
-      const extracted = content.slice(responseStart).trim()
-      if (extracted.length > 50) {
-        // Only use if we have substantial content
-        console.log('[Markus] Stripped reasoning content, extracted response starting with:', extracted.slice(0, 50))
-        return extracted
-      }
-    }
-  }
-
-  // If no clear response start found, return original content
-  // (better to show reasoning than nothing)
-  return content
-}
-
-/**
- * Parses content for MD_JSON tool calls.
- * Supports both markdown code blocks (```json...```) and plain JSON objects.
- */
-function parseContentForToolCalls(content: string): {
-  textContent: string
-  toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
-} {
-  const toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }> = []
-  let textContent = content
-
-  console.log('[Markus] Parsing content for tool calls, length:', content.length)
-  console.log('[Markus] Content preview:', content.substring(0, 300))
-
-  // First, try to match JSON in markdown code blocks (handles various formats)
-  // Match ```json or ``` followed by json content
-  const jsonBlockRegex = /```(?:json)?\s*\n?\s*(\{[\s\S]*?\})\s*\n?```/g
-  let match
-
-  while ((match = jsonBlockRegex.exec(content)) !== null) {
-    try {
-      const jsonContent = match[1].trim()
-      console.log('[Markus] Found JSON block:', jsonContent.substring(0, 100))
-      const parsed = JSON.parse(jsonContent)
-
-      if (parsed.tool && typeof parsed.tool === 'string') {
-        console.log('[Markus] Parsed tool call:', parsed.tool)
-        toolCalls.push({
-          id: uuidv4(),
-          name: parsed.tool,
-          arguments: parsed.arguments || {}
-        })
-        textContent = textContent.replace(match[0], '').trim()
-      }
-    } catch (e) {
-      console.log('[Markus] JSON parse error:', e)
-    }
-  }
-
-  // Also try to match plain JSON objects with "tool" field (not in code blocks)
-  // More permissive regex that handles empty and non-empty arguments
-  const plainJsonRegex = /\{\s*"tool"\s*:\s*"([^"]+)"\s*,\s*"arguments"\s*:\s*(\{[^{}]*\}|\{\})\s*\}/g
-
-  while ((match = plainJsonRegex.exec(textContent)) !== null) {
-    try {
-      console.log('[Markus] Found plain JSON:', match[0].substring(0, 100))
-      const parsed = JSON.parse(match[0])
-
-      if (parsed.tool && typeof parsed.tool === 'string') {
-        console.log('[Markus] Parsed plain tool call:', parsed.tool)
-        toolCalls.push({
-          id: uuidv4(),
-          name: parsed.tool,
-          arguments: parsed.arguments || {}
-        })
-        textContent = textContent.replace(match[0], '').trim()
-      }
-    } catch (e) {
-      console.log('[Markus] Plain JSON parse error:', e)
-    }
-  }
-
-  // Handle case where entire content is just a JSON tool call (no code block markers)
-  if (toolCalls.length === 0 && textContent.trim().startsWith('{')) {
-    try {
-      const parsed = JSON.parse(textContent.trim())
-      if (parsed.tool && typeof parsed.tool === 'string') {
-        console.log('[Markus] Parsed bare JSON tool call:', parsed.tool)
-        toolCalls.push({
-          id: uuidv4(),
-          name: parsed.tool,
-          arguments: parsed.arguments || {}
-        })
-        textContent = ''
-      }
-    } catch {
-      // Not valid JSON
-    }
-  }
-
-  console.log('[Markus] Found', toolCalls.length, 'tool calls')
-  return { textContent, toolCalls }
-}
 
 /**
  * Waits for user approval of a tool call.
@@ -725,19 +621,4 @@ function waitForToolApproval(conversationId: string, toolCall: ToolCallRecord): 
       }
     }, 5 * 60 * 1000)
   })
-}
-
-/**
- * Checks if a tool is safe to execute without approval.
- * Read-only tools are considered safe.
- */
-function isSafeTool(toolName: string): boolean {
-  const safeTools = [
-    'read_file',
-    'list_directory',
-    'search_files',
-    'get_open_files',
-    'get_workspace_folders'
-  ]
-  return safeTools.includes(toolName)
 }

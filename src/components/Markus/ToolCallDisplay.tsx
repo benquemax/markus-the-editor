@@ -152,7 +152,7 @@ export function ToolCallDisplay({ toolCall, onApprove, onReject }: ToolCallDispl
             <div className="text-xs font-medium text-muted-foreground mb-1">
               Arguments
             </div>
-            <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-[150px]">
+            <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-[150px] thin-scrollbar">
               {JSON.stringify(toolCall.arguments, null, 2)}
             </pre>
           </div>
@@ -163,7 +163,7 @@ export function ToolCallDisplay({ toolCall, onApprove, onReject }: ToolCallDispl
               <div className="text-xs font-medium text-muted-foreground mb-1">
                 Result
               </div>
-              <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-[200px]">
+              <pre className="bg-muted p-2 rounded text-xs overflow-auto max-h-[200px] thin-scrollbar">
                 {typeof toolCall.result === 'string'
                   ? toolCall.result
                   : JSON.stringify(toolCall.result, null, 2)}

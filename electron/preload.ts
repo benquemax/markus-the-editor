@@ -80,6 +80,47 @@ export interface MarkusMemoryProposal {
   diff: string
 }
 
+// Multi-agent types
+export type MarkusAgentType = 'orchestrator' | 'editor' | 'research' | 'critique' | 'style' | 'creative'
+export type MarkusAgentStatus = 'idle' | 'thinking' | 'executing' | 'waiting' | 'error'
+
+export interface MarkusAgentStatusInfo {
+  type: MarkusAgentType
+  status: MarkusAgentStatus
+  details?: string
+  currentTask?: string
+}
+
+export interface MarkusRAGStatus {
+  indexing: boolean
+  totalFiles: number
+  indexedFiles: number
+  totalChunks: number
+  lastUpdated: number | null
+  error?: string
+}
+
+// Task list types
+export interface MarkusTask {
+  id: string
+  description: string
+  status: 'pending' | 'in_progress' | 'done' | 'blocked'
+  priority: number
+  blockedBy?: string
+  completedAt?: number
+}
+
+export interface MarkusBlockingToolUI {
+  type: 'ask_user' | 'approval' | 'consult_boss'
+  question?: string
+  options?: string[]
+  reason?: string
+  summary?: string
+  filesChanged?: string[]
+  message?: string
+  messageType?: 'info' | 'success' | 'warning' | 'error' | 'progress'
+}
+
 export interface ElectronAPI {
   file: {
     save: (content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
@@ -244,13 +285,32 @@ export interface ElectronAPI {
     updateWorkspace: (folders: string[]) => Promise<{ success: boolean }>
     updateOpenFiles: (files: string[]) => Promise<{ success: boolean }>
 
+    // Multi-agent status
+    getAgentStatuses: () => Promise<MarkusAgentStatusInfo[]>
+    getRAGStatus: () => Promise<MarkusRAGStatus>
+    reindexWorkspace: () => Promise<{ success: boolean; error?: string }>
+
+    // Task list (thought loop)
+    getTaskList: (conversationId: string) => Promise<MarkusTask[]>
+    submitUserResponse: (args: { conversationId: string; response: string }) => Promise<{ success: boolean; error?: string }>
+    approveTask: (args: { conversationId: string }) => Promise<{ success: boolean; error?: string }>
+
     // Events
     onMessageChunk: (callback: (data: { conversationId: string; chunk: string }) => void) => () => void
     onToolCallStarted: (callback: (data: { conversationId: string; toolCall: MarkusToolCallRecord }) => void) => () => void
     onToolCallComplete: (callback: (data: { conversationId: string; toolCallId: string; result: unknown }) => void) => () => void
-    onRequestComplete: (callback: (data: { conversationId: string; messageId: string }) => void) => () => void
+    onRequestComplete: (callback: (data: { conversationId: string; messageId: string; waitingForInput?: boolean }) => void) => () => void
     onRequestError: (callback: (data: { conversationId: string; error: string }) => void) => () => void
     onToggleMarkus: (callback: () => void) => () => void
+
+    // Task list events
+    onTasksUpdated: (callback: (data: { conversationId: string; tasks: MarkusTask[] }) => void) => () => void
+    onBlockingTool: (callback: (data: { conversationId: string; toolCallId: string; uiData: MarkusBlockingToolUI }) => void) => () => void
+
+    // Multi-agent events
+    onAgentStatus: (callback: (data: MarkusAgentStatusInfo) => void) => () => void
+    onThinking: (callback: (data: { agent: MarkusAgentType; status: MarkusAgentStatus; details?: string }) => void) => () => void
+    onAgentError: (callback: (data: { agent: MarkusAgentType; error: string; taskId?: string }) => void) => () => void
   }
 }
 
@@ -405,6 +465,16 @@ const api: ElectronAPI = {
     updateWorkspace: (folders) => ipcRenderer.invoke('markus:updateWorkspace', folders),
     updateOpenFiles: (files) => ipcRenderer.invoke('markus:updateOpenFiles', files),
 
+    // Multi-agent status
+    getAgentStatuses: () => ipcRenderer.invoke('markus:getAgentStatuses'),
+    getRAGStatus: () => ipcRenderer.invoke('markus:getRAGStatus'),
+    reindexWorkspace: () => ipcRenderer.invoke('markus:reindexWorkspace'),
+
+    // Task list (thought loop)
+    getTaskList: (conversationId) => ipcRenderer.invoke('markus:getTaskList', conversationId),
+    submitUserResponse: (args) => ipcRenderer.invoke('markus:submitUserResponse', args),
+    approveTask: (args) => ipcRenderer.invoke('markus:approveTask', args),
+
     // Events
     onMessageChunk: (callback) => {
       const handler = (_: unknown, data: { conversationId: string; chunk: string }) => callback(data)
@@ -422,7 +492,7 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener('markus:toolCallComplete', handler)
     },
     onRequestComplete: (callback) => {
-      const handler = (_: unknown, data: { conversationId: string; messageId: string }) => callback(data)
+      const handler = (_: unknown, data: { conversationId: string; messageId: string; waitingForInput?: boolean }) => callback(data)
       ipcRenderer.on('markus:requestComplete', handler)
       return () => ipcRenderer.removeListener('markus:requestComplete', handler)
     },
@@ -435,6 +505,35 @@ const api: ElectronAPI = {
       const handler = () => callback()
       ipcRenderer.on('menu:toggleMarkus', handler)
       return () => ipcRenderer.removeListener('menu:toggleMarkus', handler)
+    },
+
+    // Task list events
+    onTasksUpdated: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; tasks: MarkusTask[] }) => callback(data)
+      ipcRenderer.on('markus:tasksUpdated', handler)
+      return () => ipcRenderer.removeListener('markus:tasksUpdated', handler)
+    },
+    onBlockingTool: (callback) => {
+      const handler = (_: unknown, data: { conversationId: string; toolCallId: string; uiData: MarkusBlockingToolUI }) => callback(data)
+      ipcRenderer.on('markus:blockingTool', handler)
+      return () => ipcRenderer.removeListener('markus:blockingTool', handler)
+    },
+
+    // Multi-agent events
+    onAgentStatus: (callback) => {
+      const handler = (_: unknown, data: MarkusAgentStatusInfo) => callback(data)
+      ipcRenderer.on('markus:agentStatus', handler)
+      return () => ipcRenderer.removeListener('markus:agentStatus', handler)
+    },
+    onThinking: (callback) => {
+      const handler = (_: unknown, data: { agent: MarkusAgentType; status: MarkusAgentStatus; details?: string }) => callback(data)
+      ipcRenderer.on('markus:thinking', handler)
+      return () => ipcRenderer.removeListener('markus:thinking', handler)
+    },
+    onAgentError: (callback) => {
+      const handler = (_: unknown, data: { agent: MarkusAgentType; error: string; taskId?: string }) => callback(data)
+      ipcRenderer.on('markus:agentError', handler)
+      return () => ipcRenderer.removeListener('markus:agentError', handler)
     }
   }
 }

@@ -118,7 +118,7 @@ export function ConversationHeader({
               </button>
             </div>
 
-            <div className="max-h-[300px] overflow-auto">
+            <div className="max-h-[300px] overflow-auto thin-scrollbar">
               {conversations.length === 0 ? (
                 <div className="p-4 text-sm text-muted-foreground text-center">
                   No conversations yet

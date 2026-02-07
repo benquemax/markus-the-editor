@@ -6,6 +6,40 @@
  * LLM communication, tool execution, memory, and conversations.
  */
 
+// Re-export multi-agent types for convenience
+export type {
+  AgentType,
+  AgentStatus,
+  AgentSettings,
+  MultiAgentSettings,
+  RAGSettings,
+  ModelPreset,
+  AgentMessage,
+  AgentMessageType,
+  AgentTask,
+  SearchReplaceEdit,
+  EditResult
+} from './agents/types'
+
+// Re-export thought loop types for convenience
+export type {
+  ConversationLog,
+  UserMessage,
+  ThoughtIteration,
+  ToolCallLog,
+  ToolCallResult,
+  LLMRequestContext,
+  LLMResponseData,
+  ContextSource,
+  ContextSourceType,
+  TaskState,
+  IterationEndState,
+  ThoughtLoopEvent,
+  ThoughtLoopEventHandler,
+  LoopState,
+  StopCondition
+} from './thoughtLoop/types'
+
 // ============================================================================
 // Settings Types
 // ============================================================================
@@ -43,6 +77,12 @@ export interface MarkusSettings {
   defaultPlanningMode: boolean
   /** YOLO mode - execute tools without approval */
   yoloMode: boolean
+  /** Multi-agent system settings (optional, enables advanced mode) */
+  agents?: import('./agents/types').MultiAgentSettings
+  /** RAG settings for vector search */
+  rag?: import('./agents/types').RAGSettings
+  /** Model presets for quick configuration */
+  modelPresets?: Record<string, import('./agents/types').ModelPreset>
 }
 
 /**
@@ -60,7 +100,71 @@ export const DEFAULT_MARKUS_SETTINGS: MarkusSettings = {
     useDuckDuckGo: true
   },
   defaultPlanningMode: true,
-  yoloMode: false
+  yoloMode: false,
+  // Multi-agent settings - enabled by default with sensible defaults
+  agents: {
+    defaults: {
+      model: 'gpt-4o-mini',
+      endpoint: 'http://localhost:11434/v1',
+      maxTokens: 4096,
+      temperature: 0.7
+    },
+    orchestrator: {
+      maxTokens: 8192
+    },
+    editor: {
+      maxTokens: 4096,
+      temperature: 0.3
+    },
+    research: {
+      maxTokens: 6144
+    },
+    critique: {
+      maxTokens: 6144
+    },
+    style: {
+      maxTokens: 4096
+    },
+    creative: {
+      maxTokens: 6144,
+      temperature: 0.8
+    }
+  },
+  // RAG settings
+  rag: {
+    enabled: true,
+    embeddings: {
+      provider: 'local',
+      model: 'all-MiniLM-L6-v2'
+    },
+    chunking: {
+      maxChunkSize: 512,
+      overlap: 50
+    }
+  },
+  // Model presets for easy configuration
+  modelPresets: {
+    'local-small': {
+      name: 'Local Small (Ministral 8B)',
+      endpoint: 'http://localhost:11434/v1',
+      model: 'ministral-8b'
+    },
+    'local-medium': {
+      name: 'Local Medium (Devstral 24B)',
+      endpoint: 'http://localhost:11434/v1',
+      model: 'devstral-small'
+    },
+    'openai-mini': {
+      name: 'OpenAI GPT-4o Mini',
+      endpoint: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini'
+    },
+    'openai-4o': {
+      name: 'OpenAI GPT-4o',
+      endpoint: 'https://api.openai.com/v1',
+      model: 'gpt-4o'
+    }
+  }
 }
 
 // ============================================================================
@@ -188,6 +292,51 @@ export interface LLMStreamChunk {
 }
 
 // ============================================================================
+// Task Types (Thought Loop)
+// ============================================================================
+
+/**
+ * A single task in the task list.
+ */
+export interface Task {
+  id: string
+  description: string
+  status: 'pending' | 'in_progress' | 'done' | 'blocked'
+  priority: number
+  /** Reference to blocking task or reason */
+  blockedBy?: string
+  completedAt?: number
+}
+
+/**
+ * Persistent task list for a conversation.
+ * Survives context condensation and keeps the agent focused.
+ */
+export interface TaskList {
+  conversationId: string
+  tasks: Task[]
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * UI data for blocking tool calls.
+ */
+export interface BlockingToolUI {
+  type: 'ask_user' | 'approval' | 'consult_boss'
+  /** For ask_user */
+  question?: string
+  options?: string[]
+  reason?: string
+  /** For approval */
+  summary?: string
+  filesChanged?: string[]
+  /** For consult_boss */
+  message?: string
+  messageType?: 'info' | 'success' | 'warning' | 'error' | 'progress'
+}
+
+// ============================================================================
 // Tool Types
 // ============================================================================
 
@@ -207,6 +356,10 @@ export type ToolName =
   | 'get_open_files'
   | 'get_workspace_folders'
   | 'update_memory'
+  | 'consult_boss'
+  | 'update_tasks'
+  | 'ask_user'
+  | 'request_task_approval'
 
 /**
  * Result of tool execution.
@@ -217,6 +370,10 @@ export interface ToolResult {
   error?: string
   /** File that should be auto-opened after creation/edit */
   openFile?: string
+  /** Whether this tool blocks the thought loop waiting for user input */
+  blocking?: boolean
+  /** UI data for blocking tools */
+  uiData?: BlockingToolUI
 }
 
 /**
@@ -229,6 +386,10 @@ export interface ToolContext {
   openFiles: string[]
   /** Main window reference for file operations */
   mainWindow: Electron.BrowserWindow | null
+  /** Current filebar ID (for task storage) */
+  filebarId?: string
+  /** Current conversation ID */
+  conversationId?: string
 }
 
 // ============================================================================

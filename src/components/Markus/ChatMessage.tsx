@@ -3,11 +3,15 @@
  *
  * Displays a single chat message with markdown rendering,
  * tool call displays, and status indicators.
+ *
+ * For the thought loop architecture:
+ * - consult_boss tool calls are rendered as chat message bubbles
+ * - All other tool calls are HIDDEN from the user (invisible)
+ * - The user only sees consult_boss messages and blocking dialogs
  */
 
 import { useState, useCallback } from 'react'
-import { User, Bot, Loader2, Copy, Check } from 'lucide-react'
-import { ToolCallDisplay } from './ToolCallDisplay'
+import { User, Bot, Copy, Check, Info, CheckCircle, AlertTriangle, XCircle, RefreshCw } from 'lucide-react'
 import type { MarkusChatMessage, MarkusToolCallRecord } from '../../lib/markus/types'
 import { cn } from '../../lib/utils'
 import MarkdownIt from 'markdown-it'
@@ -20,15 +24,50 @@ const md = new MarkdownIt({
   breaks: true
 })
 
-interface ChatMessageProps {
-  message: MarkusChatMessage
-  onToolApproval: (toolCallId: string, approved: boolean) => void
+/**
+ * Renders a consult_boss message as a styled chat bubble.
+ */
+function ConsultBossMessage({ toolCall }: { toolCall: MarkusToolCallRecord }) {
+  const args = toolCall.arguments as { message?: string; type?: string }
+  const message = args.message || ''
+  const type = (args.type || 'info') as 'info' | 'success' | 'warning' | 'error' | 'progress'
+
+  const icons = {
+    info: <Info className="w-4 h-4 text-blue-500" />,
+    success: <CheckCircle className="w-4 h-4 text-green-500" />,
+    warning: <AlertTriangle className="w-4 h-4 text-amber-500" />,
+    error: <XCircle className="w-4 h-4 text-red-500" />,
+    progress: <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+  }
+
+  const bgColors = {
+    info: 'bg-blue-500/5 border-blue-500/20',
+    success: 'bg-green-500/5 border-green-500/20',
+    warning: 'bg-amber-500/5 border-amber-500/20',
+    error: 'bg-red-500/5 border-red-500/20',
+    progress: 'bg-blue-500/5 border-blue-500/20'
+  }
+
+  return (
+    <div className={cn('p-3 rounded-lg border', bgColors[type])}>
+      <div className="flex items-start gap-2">
+        {icons[type]}
+        <div
+          className="flex-1 prose prose-sm max-w-none dark:prose-invert"
+          dangerouslySetInnerHTML={{ __html: md.render(message) }}
+        />
+      </div>
+    </div>
+  )
 }
 
-export function ChatMessage({ message, onToolApproval }: ChatMessageProps) {
+interface ChatMessageProps {
+  message: MarkusChatMessage
+}
+
+export function ChatMessage({ message }: ChatMessageProps) {
   const [copied, setCopied] = useState(false)
   const isUser = message.role === 'user'
-  const isStreaming = message.status === 'streaming'
   const isError = message.status === 'error'
 
   /**
@@ -73,49 +112,39 @@ export function ChatMessage({ message, onToolApproval }: ChatMessageProps) {
           isUser && 'text-right'
         )}
       >
-        {/* Main content bubble */}
-        <div
-          className={cn(
-            'inline-block p-3 rounded-lg text-sm',
-            isUser
-              ? 'bg-primary text-primary-foreground'
-              : message.isPlan
-                ? 'bg-amber-500/10 border border-amber-500/30'
-                : 'bg-muted',
-            isError && 'bg-destructive/10 border border-destructive/30'
-          )}
-        >
-          {message.content ? (
+        {/* Main content bubble - only show for USER messages
+            For assistant messages, content is invisible (only tool outputs shown) */}
+        {isUser && message.content?.trim() && (
+          <div
+            className={cn(
+              'inline-block p-3 rounded-lg text-sm',
+              'bg-primary text-primary-foreground',
+              isError && 'bg-destructive/10 border border-destructive/30'
+            )}
+          >
             <div
-              className={cn(
-                'prose prose-sm max-w-none',
-                isUser ? 'prose-invert' : 'dark:prose-invert'
-              )}
+              className="prose prose-sm max-w-none prose-invert"
               dangerouslySetInnerHTML={{
                 __html: md.render(message.content)
               }}
             />
-          ) : isStreaming ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : null}
+          </div>
+        )}
 
-          {/* Streaming indicator */}
-          {isStreaming && message.content && (
-            <span className="inline-block w-1.5 h-4 bg-current animate-pulse ml-1" />
-          )}
-        </div>
-
-        {/* Tool calls */}
+        {/* Tool calls - ONLY show consult_boss messages, all others are hidden */}
         {message.toolCalls && message.toolCalls.length > 0 && (
           <div className="space-y-2">
-            {message.toolCalls.map((toolCall: MarkusToolCallRecord) => (
-              <ToolCallDisplay
-                key={toolCall.id}
-                toolCall={toolCall}
-                onApprove={() => onToolApproval(toolCall.id, true)}
-                onReject={() => onToolApproval(toolCall.id, false)}
-              />
-            ))}
+            {message.toolCalls.map((toolCall: MarkusToolCallRecord) => {
+              // consult_boss: Render as a styled message bubble
+              if (toolCall.name === 'consult_boss') {
+                return <ConsultBossMessage key={toolCall.id} toolCall={toolCall} />
+              }
+
+              // All other tools: Hidden from user (only consult_boss is visible)
+              // This includes: update_tasks, ask_user, request_task_approval,
+              // read_file, list_directory, search_files, edit_file, consult_*_agent, etc.
+              return null
+            })}
           </div>
         )}
 
