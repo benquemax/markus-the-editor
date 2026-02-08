@@ -14,15 +14,14 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import { BrowserWindow } from 'electron'
 import { createLLMClient } from '../llm'
 import { TOOL_DEFINITIONS, executeTool } from '../tools'
 import { loadTaskList, createTaskList } from '../tasks'
 import type {
   MarkusSettings,
-  ToolContext,
-  ToolCallRecord
+  ToolContext
 } from '../types'
+import type { EventTransport } from '../transport/types'
 import type {
   ConversationLog,
   ThoughtIteration,
@@ -228,11 +227,10 @@ export interface LoopControllerOptions {
   settings: MarkusSettings
   workspaceFolders: string[]
   filebarId: string
-  mainWindow: BrowserWindow
+  transport: EventTransport
   getOpenFiles: () => string[]
   onEvent: ThoughtLoopEventHandler
   yoloMode: boolean
-  waitForToolApproval: (conversationId: string, toolCall: ToolCallRecord) => Promise<boolean>
   abortSignal?: AbortSignal
 }
 
@@ -258,7 +256,7 @@ export class LoopController {
       settings,
       workspaceFolders,
       filebarId,
-      mainWindow,
+      transport,
       getOpenFiles,
       onEvent,
       abortSignal
@@ -423,35 +421,24 @@ export class LoopController {
         let shouldExecute = this.options.yoloMode || isThoughtLoopTool(toolCallData.name) || isSafeTool(toolCallData.name)
 
         if (!shouldExecute) {
-          const toolCallRecord: ToolCallRecord = {
-            id: toolCallData.id,
-            name: toolCallData.name,
-            arguments: toolCallData.arguments,
-            status: 'pending',
-            startedAt: Date.now()
-          }
-
-          mainWindow.webContents.send('markus:toolCallStarted', {
-            conversationId: log.id,
-            toolCall: toolCallRecord
-          })
-
-          shouldExecute = await this.options.waitForToolApproval(log.id, toolCallRecord)
+          // Send tool started event and wait for approval via transport
+          transport.sendToolStarted(log.id, toolCallLog)
+          shouldExecute = await transport.waitForToolApproval(log.id, toolCallLog.id)
         }
 
         if (shouldExecute) {
           toolCallLog.status = 'executing'
 
-          const context: ToolContext = {
+          const toolContext: ToolContext = {
             workspaceFolders,
             openFiles: getOpenFiles(),
-            mainWindow,
+            mainWindow: null,
             filebarId,
             conversationId: log.id
           }
 
           try {
-            const result = await executeTool(toolCallData.name, toolCallData.arguments, context)
+            const result = await executeTool(toolCallData.name, toolCallData.arguments, toolContext)
 
             toolCallLog.status = result.success ? 'complete' : 'error'
             toolCallLog.completedAt = Date.now()
@@ -471,11 +458,7 @@ export class LoopController {
               toolCallLog.blocking = true
               toolCallLog.uiData = result.uiData
 
-              mainWindow.webContents.send('markus:blockingTool', {
-                conversationId: log.id,
-                toolCallId: toolCallLog.id,
-                uiData: result.uiData
-              })
+              transport.sendBlocking(log.id, toolCallLog.id, result.uiData)
 
               endState = {
                 type: 'blocking_tool',
@@ -492,15 +475,11 @@ export class LoopController {
             }
             onEvent({ type: 'tool_complete', toolCallId: toolCallLog.id, result: toolResult })
 
-            mainWindow.webContents.send('markus:toolCallComplete', {
-              conversationId: log.id,
-              toolCallId: toolCallLog.id,
-              result
-            })
+            transport.sendToolComplete(log.id, toolCallLog.id, toolResult)
 
             // Auto-open files
             if (result.openFile) {
-              mainWindow.webContents.send('file:openPath', result.openFile)
+              transport.sendOpenFile(result.openFile)
             }
 
             if (endState.type === 'blocking_tool') {
@@ -532,10 +511,7 @@ export class LoopController {
           updatedAt: updatedTaskList.updatedAt
         })
 
-        mainWindow.webContents.send('markus:tasksUpdated', {
-          conversationId: log.id,
-          tasks: updatedTaskList.tasks
-        })
+        transport.sendTasksUpdated(log.id, updatedTaskList.tasks)
       }
 
       // Check if all tools were rejected

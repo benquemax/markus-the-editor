@@ -2,21 +2,21 @@
  * MarkusPanel Component
  *
  * Main container for the Markus AI agent interface.
- * Displays chat messages, handles conversation management,
- * and provides controls for planning/YOLO modes.
+ * Connects to the standalone Markus server via HTTP/WebSocket.
  *
  * Features:
  * - Agent status badges showing which agents are working
  * - Thinking indicator with iteration progress
  * - Debug panel for conversation inspection
  *
- * Note: The backend now uses algorithmic context fabrication
- * (ConversationLog format) but converts to old Conversation format
- * for UI compatibility.
+ * Architecture:
+ * - Uses MarkusClient for HTTP operations (create conversation, get settings)
+ * - Uses MarkusConnection for WebSocket streaming (messages, tool calls)
+ * - Markus server runs separately from Electron app
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Settings, AlertCircle, Loader2 } from 'lucide-react'
+import { Settings, AlertCircle, Loader2, WifiOff } from 'lucide-react'
 import { ConversationHeader } from './ConversationHeader'
 import MarkdownIt from 'markdown-it'
 
@@ -35,406 +35,442 @@ import { TaskListPanel } from './TaskListPanel'
 import { AskUserDialog } from './AskUserDialog'
 import { ApprovalDialog } from './ApprovalDialog'
 import { ThinkingWidget } from './ThinkingWidget'
+import {
+  createMarkusClient,
+  MarkusClient,
+  MarkusConnection,
+  type ConversationInfo,
+  type MessageEvent,
+  type BlockingToolUI,
+  type Task
+} from '../../lib/markus/client'
 import type {
   MarkusConversation,
   MarkusToolCallRecord,
-  MarkusSettings,
-  AgentStatusInfo,
-  Task,
-  BlockingToolUI
+  AgentStatusInfo
 } from '../../lib/markus/types'
+
+// Server URL - can be configured via environment or settings
+const MARKUS_SERVER_URL = 'http://localhost:3847'
 
 interface MarkusPanelProps {
   workspaceFolders: string[]
   openFiles: string[]
 }
 
-export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
+export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
+  // Client and connection state
+  const clientRef = useRef<MarkusClient | null>(null)
+  const connectionRef = useRef<MarkusConnection | null>(null)
+  const [serverConnected, setServerConnected] = useState(false)
+  const [serverError, setServerError] = useState<string | null>(null)
+
+  // Conversation state
+  const [conversationInfo, setConversationInfo] = useState<ConversationInfo | null>(null)
   const [conversation, setConversation] = useState<MarkusConversation | null>(null)
-  // Settings are loaded and used to set initial mode state
-  const [, setSettings] = useState<MarkusSettings | null>(null)
   const [isConfigured, setIsConfigured] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
-  // Track current iteration's streaming content
+
+  // Streaming state
   const [streamingContent, setStreamingContent] = useState('')
-  // Track ALL tool calls across iterations (accumulated during request)
   const [streamingToolCalls, setStreamingToolCalls] = useState<MarkusToolCallRecord[]>([])
-  // Track previous iterations' thinking content (for showing multiple thinking widgets)
   const [previousIterations, setPreviousIterations] = useState<string[]>([])
+
+  // Mode state
   const [planningMode, setPlanningMode] = useState(true)
   const [yoloMode, setYoloMode] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Refs for scroll handling
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isUserScrolledUp = useRef(false)
 
-  // Multi-agent state
-  const [agentStatuses, setAgentStatuses] = useState<AgentStatusInfo[]>([])
+  // Refs to capture latest state for event handlers
+  const streamingContentRef = useRef(streamingContent)
+  const streamingToolCallsRef = useRef(streamingToolCalls)
+  streamingContentRef.current = streamingContent
+  streamingToolCallsRef.current = streamingToolCalls
+
+  // Multi-agent state (placeholder - will be added to server later)
+  const [agentStatuses] = useState<AgentStatusInfo[]>([])
 
   // Thought loop state
   const [tasks, setTasks] = useState<Task[]>([])
   const [blockingUI, setBlockingUI] = useState<BlockingToolUI | null>(null)
-  // Track if we're waiting for user input (blocking tool active)
-  const [, setWaitingForInput] = useState(false)
+  const [blockingToolCallId, setBlockingToolCallId] = useState<string | null>(null)
 
-  // Check if user has scrolled to the bottom (within threshold)
+  // Check if user has scrolled to the bottom
   const checkIfAtBottom = useCallback(() => {
     const container = messagesContainerRef.current
     if (!container) return true
-    const threshold = 100 // pixels from bottom
+    const threshold = 100
     return container.scrollHeight - container.scrollTop - container.clientHeight < threshold
   }, [])
 
-  // Handle scroll events to track if user scrolled up
+  // Handle scroll events
   const handleScroll = useCallback(() => {
     isUserScrolledUp.current = !checkIfAtBottom()
   }, [checkIfAtBottom])
 
-  // Scroll to bottom only if user hasn't scrolled up
+  // Scroll to bottom
   const scrollToBottom = useCallback(() => {
     if (!isUserScrolledUp.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
     }
   }, [])
 
-  // Load settings and latest conversation on mount
+  // Initialize client and check server connection
   useEffect(() => {
-    const loadInitialState = async () => {
-      try {
-        const loadedSettings = await window.electron.markus.getSettings()
-        setSettings(loadedSettings)
-        setPlanningMode(loadedSettings.defaultPlanningMode)
-        setYoloMode(loadedSettings.yoloMode)
+    const initClient = async () => {
+      const client = createMarkusClient(MARKUS_SERVER_URL)
+      clientRef.current = client
 
-        const validation = await window.electron.markus.validateSettings()
+      try {
+        // Check server health
+        await client.health()
+        setServerConnected(true)
+        setServerError(null)
+
+        // Load settings and validate
+        const settings = await client.getSettings()
+        setPlanningMode(settings.defaultPlanningMode)
+        setYoloMode(settings.yoloMode)
+
+        const validation = await client.validateSettings()
         setIsConfigured(validation.valid)
-
-        const latestConv = await window.electron.markus.loadLatestConversation()
-        if (latestConv) {
-          setConversation(latestConv)
-        } else {
-          const newConv = await window.electron.markus.createConversation()
-          setConversation(newConv)
-        }
       } catch (err) {
-        setError(String(err))
+        setServerConnected(false)
+        setServerError(err instanceof Error ? err.message : 'Failed to connect to server')
       }
     }
 
-    loadInitialState()
+    initClient()
+
+    // Cleanup on unmount
+    return () => {
+      connectionRef.current?.disconnect()
+    }
   }, [])
 
-  // Update workspace info in main process
+  // Create or load conversation when workspace changes
   useEffect(() => {
-    window.electron.markus.updateWorkspace(workspaceFolders)
-  }, [workspaceFolders])
+    if (!clientRef.current || !serverConnected || workspaceFolders.length === 0) return
 
-  useEffect(() => {
-    window.electron.markus.updateOpenFiles(openFiles)
-  }, [openFiles])
-
-  // Fetch initial agent statuses
-  useEffect(() => {
-    const fetchAgentStatuses = async () => {
+    const initConversation = async () => {
       try {
-        const statuses = await window.electron.markus.getAgentStatuses()
-        setAgentStatuses(statuses)
-      } catch {
-        // Silently fail - multi-agent might not be initialized
+        // Create a new conversation for this workspace
+        const info = await clientRef.current!.createConversation({
+          workspaceFolders
+        })
+        setConversationInfo(info)
+
+        // Initialize empty conversation for UI
+        setConversation({
+          id: info.id,
+          title: 'New Conversation',
+          filebarId: info.filebarId,
+          messages: [],
+          createdAt: info.createdAt,
+          updatedAt: info.createdAt
+        })
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to create conversation')
       }
     }
-    fetchAgentStatuses()
-  }, [])
 
-  // Subscribe to agent status changes
+    initConversation()
+  }, [serverConnected, workspaceFolders])
+
+  // Connect WebSocket when conversation is ready
   useEffect(() => {
-    const unsubAgentStatus = window.electron.markus.onAgentStatus((data: AgentStatusInfo) => {
-      setAgentStatuses(prev => {
-        const existing = prev.findIndex(a => a.type === data.type)
-        if (existing >= 0) {
-          const updated = [...prev]
-          updated[existing] = data
-          return updated
+    if (!conversationInfo || !clientRef.current) return
+
+    const connectWebSocket = async () => {
+      // Disconnect existing connection
+      connectionRef.current?.disconnect()
+
+      // Create new connection
+      const connection = clientRef.current!.connect(conversationInfo.id)
+      connectionRef.current = connection
+
+      // Subscribe to message events
+      connection.onMessage(handleMessageEvent)
+
+      // Subscribe to connection events
+      connection.onConnection((event) => {
+        if (event.type === 'disconnected') {
+          console.log('[MarkusPanel] WebSocket disconnected:', event.reason)
+        } else if (event.type === 'error') {
+          setError(event.error)
         }
-        return [...prev, data]
       })
-    })
+
+      try {
+        await connection.connect()
+        console.log('[MarkusPanel] WebSocket connected')
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to connect WebSocket')
+      }
+    }
+
+    connectWebSocket()
 
     return () => {
-      unsubAgentStatus()
+      connectionRef.current?.disconnect()
     }
-  }, [])
+  }, [conversationInfo])
 
-  // Subscribe to task list updates
-  useEffect(() => {
-    const unsubTasksUpdated = window.electron.markus.onTasksUpdated((data: { conversationId: string; tasks: Task[] }) => {
-      console.log('[MarkusPanel] Received tasksUpdated:', data.tasks.length, 'tasks, conversationId:', data.conversationId)
-      console.log('[MarkusPanel] Current conversation?.id:', conversation?.id)
-      if (data.conversationId === conversation?.id) {
-        console.log('[MarkusPanel] Setting tasks:', data.tasks.map(t => t.description))
-        setTasks(data.tasks)
-      } else {
-        console.log('[MarkusPanel] Ignoring - conversation ID mismatch')
-      }
-    })
-
-    const unsubBlockingTool = window.electron.markus.onBlockingTool((data: { conversationId: string; uiData: BlockingToolUI }) => {
-      if (data.conversationId === conversation?.id) {
-        setBlockingUI(data.uiData)
-        setWaitingForInput(true)
-      }
-    })
-
-    return () => {
-      unsubTasksUpdated()
-      unsubBlockingTool()
-    }
-  }, [conversation?.id])
-
-  // Load initial task list when conversation changes
-  useEffect(() => {
-    if (conversation?.id) {
-      console.log('[MarkusPanel] Loading initial task list for conversation:', conversation.id)
-      window.electron.markus.getTaskList(conversation.id).then((tasks: Task[]) => {
-        console.log('[MarkusPanel] Initial task list loaded:', tasks.length, 'tasks')
-        setTasks(tasks)
-      })
-    } else {
-      setTasks([])
-    }
-    // Clear blocking UI when conversation changes
-    setBlockingUI(null)
-    setWaitingForInput(false)
-  }, [conversation?.id])
-
-  // Subscribe to streaming events
-  useEffect(() => {
-    const unsubChunk = window.electron.markus.onMessageChunk((data: { conversationId: string; chunk: string }) => {
-      if (data.conversationId === conversation?.id) {
-        // Empty chunk signals new iteration started
-        if (data.chunk === '') {
-          // Save current iteration's content to history (if any)
-          setStreamingContent(prev => {
-            if (prev.trim()) {
-              setPreviousIterations(history => [...history, prev])
-            }
-            return '' // Start fresh for new iteration
-          })
-          // DON'T reset tool calls - they accumulate across iterations
-        } else {
-          setStreamingContent(prev => prev + data.chunk)
-        }
+  // Handle WebSocket message events
+  const handleMessageEvent = useCallback((event: MessageEvent) => {
+    switch (event.type) {
+      case 'chunk':
+        setStreamingContent(prev => prev + event.content)
         scrollToBottom()
-      }
-    })
+        break
 
-    const unsubToolStart = window.electron.markus.onToolCallStarted((data: { conversationId: string; toolCall: MarkusToolCallRecord }) => {
-      if (data.conversationId === conversation?.id) {
-        // Add to streaming tool calls (for current message being streamed)
+      case 'iteration_started':
+        // Save current content to history and start fresh
+        setStreamingContent(prev => {
+          if (prev.trim()) {
+            setPreviousIterations(history => [...history, prev])
+          }
+          return ''
+        })
+        break
+
+      case 'tool_started':
         setStreamingToolCalls(prev => {
+          // Deduplicate by ID to prevent doubled tool calls
           const existingIds = new Set(prev.map(tc => tc.id))
-          if (existingIds.has(data.toolCall.id)) return prev
-          return [...prev, data.toolCall]
+          if (existingIds.has(event.toolCall.id)) return prev
+          return [...prev, {
+            id: event.toolCall.id,
+            name: event.toolCall.name,
+            arguments: event.toolCall.arguments,
+            status: 'executing' as const,
+            startedAt: Date.now()
+          }]
         })
         scrollToBottom()
-      }
-    })
+        break
 
-    const unsubToolComplete = window.electron.markus.onToolCallComplete((data: { conversationId: string; toolCallId: string; result: unknown }) => {
-      if (data.conversationId === conversation?.id) {
-        // Update streaming tool calls
+      case 'tool_complete':
         setStreamingToolCalls(prev => prev.map(tc =>
-          tc.id === data.toolCallId
-            ? { ...tc, status: 'complete' as const, result: data.result }
+          tc.id === event.toolCallId
+            ? { ...tc, status: 'complete' as const, result: event.result }
             : tc
         ))
-      }
-    })
+        break
 
-    const unsubComplete = window.electron.markus.onRequestComplete((data: { conversationId: string; messageId: string; waitingForInput?: boolean }) => {
-      if (data.conversationId === conversation?.id) {
+      case 'blocking':
+        setBlockingUI(event.uiData)
+        setBlockingToolCallId(event.toolCallId)
+        break
+
+      case 'tasks_updated':
+        setTasks(event.tasks)
+        break
+
+      case 'complete':
         setIsLoading(false)
-        setStreamingContent('')
-        setStreamingToolCalls([])
-        setPreviousIterations([])
-        // Reset scroll tracking for next request
-        isUserScrolledUp.current = false
-        // Set waiting state if blocking tool was executed
-        if (data.waitingForInput) {
-          setWaitingForInput(true)
+        // Use refs to get the latest state (avoiding stale closure)
+        const finalContent = streamingContentRef.current
+        const finalToolCalls = streamingToolCallsRef.current
+        // Add assistant message to conversation
+        if (finalContent.trim() || finalToolCalls.length > 0) {
+          setConversation(prev => {
+            if (!prev) return prev
+            return {
+              ...prev,
+              messages: [
+                ...prev.messages,
+                {
+                  id: crypto.randomUUID(),
+                  role: 'assistant' as const,
+                  content: finalContent,
+                  timestamp: Date.now(),
+                  status: 'complete' as const,
+                  toolCalls: finalToolCalls
+                }
+              ],
+              updatedAt: Date.now()
+            }
+          })
         }
-        // Reload conversation to get final state
-        window.electron.markus.loadConversation(data.conversationId).then((conv: MarkusConversation | null) => {
-          if (conv) setConversation(conv)
-        })
-      }
-    })
+        setStreamingContent('')
+        setStreamingToolCalls([])
+        setPreviousIterations([])
+        isUserScrolledUp.current = false
+        break
 
-    const unsubError = window.electron.markus.onRequestError((data: { conversationId: string; error: string }) => {
-      if (data.conversationId === conversation?.id) {
+      case 'error':
         setIsLoading(false)
         setStreamingContent('')
         setStreamingToolCalls([])
         setPreviousIterations([])
         isUserScrolledUp.current = false
-        setError(data.error)
-      }
-    })
-
-    return () => {
-      unsubChunk()
-      unsubToolStart()
-      unsubToolComplete()
-      unsubComplete()
-      unsubError()
+        setError(event.message)
+        break
     }
-  }, [conversation?.id, scrollToBottom])
+  }, [scrollToBottom])
 
   // Handle sending a message
   const handleSendMessage = useCallback(async (message: string) => {
-    if (!conversation || !message.trim() || isLoading) return
+    if (!connectionRef.current || !message.trim() || isLoading) return
 
     setError(null)
     setIsLoading(true)
     setStreamingContent('')
 
-    try {
-      const result = await window.electron.markus.sendMessage({
-        conversation,
-        message: message.trim(),
-        planningMode,
-        yoloMode
-      })
-
-      if (!result.success) {
-        setError(result.error || 'Failed to send message')
-        setIsLoading(false)
-      } else if (result.conversation) {
-        setConversation(result.conversation)
+    // Add user message to conversation
+    setConversation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: crypto.randomUUID(),
+            role: 'user' as const,
+            content: message.trim(),
+            timestamp: Date.now(),
+            status: 'complete' as const
+          }
+        ],
+        updatedAt: Date.now()
       }
-    } catch (err) {
-      setError(String(err))
-      setIsLoading(false)
-    }
-  }, [conversation, isLoading, planningMode, yoloMode])
+    })
+
+    // Send via WebSocket
+    connectionRef.current.sendMessage(message.trim(), {
+      planningMode,
+      yoloMode
+    })
+  }, [isLoading, planningMode, yoloMode])
 
   // Handle creating a new conversation
   const handleNewConversation = useCallback(async () => {
+    if (!clientRef.current) return
+
     try {
-      const newConv = await window.electron.markus.createConversation()
-      setConversation(newConv)
+      const info = await clientRef.current.createConversation({
+        workspaceFolders
+      })
+      setConversationInfo(info)
+      setConversation({
+        id: info.id,
+        title: 'New Conversation',
+        filebarId: info.filebarId,
+        messages: [],
+        createdAt: info.createdAt,
+        updatedAt: info.createdAt
+      })
+      setTasks([])
+      setBlockingUI(null)
       setError(null)
     } catch (err) {
-      setError(String(err))
+      setError(err instanceof Error ? err.message : 'Failed to create conversation')
     }
-  }, [])
+  }, [workspaceFolders])
 
-  // Handle loading a conversation
+  // Handle loading a conversation (placeholder - needs server endpoint)
   const handleLoadConversation = useCallback(async (conversationId: string) => {
-    try {
-      const conv = await window.electron.markus.loadConversation(conversationId)
-      if (conv) {
-        setConversation(conv)
-        setError(null)
-      }
-    } catch (err) {
-      setError(String(err))
-    }
+    // TODO: Need to add message history endpoint to server
+    console.log('[MarkusPanel] Loading conversation:', conversationId)
+    setError('Loading conversations not yet supported in server mode')
   }, [])
 
   // Handle canceling the current request
-  const handleCancel = useCallback(async () => {
-    if (!conversation) return
-    await window.electron.markus.cancelRequest(conversation.id)
+  const handleCancel = useCallback(() => {
+    if (!connectionRef.current) return
+    connectionRef.current.cancel()
     setIsLoading(false)
     setStreamingContent('')
-  }, [conversation])
+  }, [])
 
-  // Handle opening settings
+  // Handle opening settings (still uses Electron IPC)
   const handleOpenSettings = useCallback(async () => {
+    // This still uses IPC since settings file is local
     await window.electron.markus.openSettings()
   }, [])
 
   // Handle user response to ask_user blocking tool
-  const handleUserResponse = useCallback(async (response: string) => {
-    if (!conversation) return
+  const handleUserResponse = useCallback((response: string) => {
+    if (!connectionRef.current || !blockingToolCallId) return
 
     setBlockingUI(null)
-    setWaitingForInput(false)
 
-    // Add the user response to the local conversation state
-    const updatedConversation: MarkusConversation = {
-      ...conversation,
-      messages: [
-        ...conversation.messages,
-        {
-          id: crypto.randomUUID(),
-          role: 'user' as const,
-          content: `[User Response] ${response}`,
-          timestamp: Date.now(),
-          status: 'complete' as const
-        }
-      ]
-    }
-    setConversation(updatedConversation)
-
-    // Continue the thought loop (empty message = just continue, don't add another user message)
-    setIsLoading(true)
-    try {
-      const result = await window.electron.markus.sendMessage({
-        conversation: updatedConversation,
-        message: '', // Empty = continuation, handler will skip adding user message
-        planningMode,
-        yoloMode
-      })
-      if (result.conversation) {
-        setConversation(result.conversation)
+    // Add user response to conversation
+    setConversation(prev => {
+      if (!prev) return prev
+      return {
+        ...prev,
+        messages: [
+          ...prev.messages,
+          {
+            id: crypto.randomUUID(),
+            role: 'user' as const,
+            content: `[User Response] ${response}`,
+            timestamp: Date.now(),
+            status: 'complete' as const
+          }
+        ]
       }
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [conversation, planningMode, yoloMode])
+    })
+
+    // Send response via WebSocket
+    connectionRef.current.respondToTool(blockingToolCallId, response)
+    setBlockingToolCallId(null)
+    setIsLoading(true)
+  }, [blockingToolCallId])
 
   // Handle task approval
-  const handleTaskApproval = useCallback(async () => {
-    if (!conversation) return
+  const handleTaskApproval = useCallback(() => {
+    if (!connectionRef.current || !blockingToolCallId) return
 
     setBlockingUI(null)
-    setWaitingForInput(false)
     setTasks([])
 
-    await window.electron.markus.approveTask({
-      conversationId: conversation.id
-    })
-  }, [conversation])
+    // Send approval via WebSocket
+    connectionRef.current.respondToTool(blockingToolCallId, true)
+    setBlockingToolCallId(null)
+  }, [blockingToolCallId])
 
   // Handle request for changes after approval dialog
-  const handleRequestChanges = useCallback(async (feedback: string) => {
-    if (!conversation) return
+  const handleRequestChanges = useCallback((feedback: string) => {
+    if (!connectionRef.current || !blockingToolCallId) return
 
     setBlockingUI(null)
-    setWaitingForInput(false)
 
-    // Send the feedback as a new message to continue the conversation
+    // Send rejection with feedback
+    connectionRef.current.respondToTool(blockingToolCallId, feedback)
+    setBlockingToolCallId(null)
     setIsLoading(true)
-    try {
-      const result = await window.electron.markus.sendMessage({
-        conversation,
-        message: feedback,
-        planningMode,
-        yoloMode
-      })
-      if (result.conversation) {
-        setConversation(result.conversation)
-      }
-    } catch (err) {
-      setError(String(err))
-    } finally {
-      setIsLoading(false)
-    }
-  }, [conversation, planningMode, yoloMode])
+  }, [blockingToolCallId])
+
+  // Show server connection error
+  if (!serverConnected) {
+    return (
+      <div className="h-full flex flex-col bg-muted/20">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Markus
+          </span>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center">
+          <WifiOff className="w-12 h-12 text-amber-500 mb-4" />
+          <h3 className="text-lg font-medium mb-2">Server Not Connected</h3>
+          <p className="text-sm text-muted-foreground mb-4">
+            {serverError || `Cannot connect to Markus server at ${MARKUS_SERVER_URL}`}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Start the server with: <code className="bg-muted px-1 py-0.5 rounded">npm run start</code> in packages/markus-server
+          </p>
+        </div>
+      </div>
+    )
+  }
 
   // Show configuration prompt if not configured
   if (!isConfigured) {
@@ -479,10 +515,10 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
         onOpenSettings={handleOpenSettings}
       />
 
-      {/* Task List Panel - shows current tasks */}
+      {/* Task List Panel */}
       <TaskListPanel tasks={tasks} />
 
-      {/* Agent Activity Display - shows which agents are working */}
+      {/* Agent Activity Display */}
       {agentStatuses.length > 0 && (
         <div className="px-3 py-1.5 border-b border-border/50 bg-muted/30">
           <AgentActivityDisplay agents={agentStatuses} compact />
@@ -496,12 +532,8 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
         className="flex-1 overflow-auto p-3 space-y-3 thin-scrollbar"
       >
         {conversation?.messages
-          // Filter out the streaming placeholder message to avoid showing it twice
-          // (once from conversation.messages, once from streamingContent below)
           .filter((message) => !(isLoading && message.status === 'streaming'))
-          // Filter out internal "[Tool Results]" messages - these are for LLM context only
           .filter((message) => !message.content.startsWith('[Tool Results]'))
-          // Filter out empty assistant messages (created during tool execution loops)
           .filter((message) => !(message.role === 'assistant' && !message.content.trim() && (!message.toolCalls || message.toolCalls.length === 0)))
           .map((message) => (
             <ChatMessage
@@ -510,7 +542,7 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
             />
           ))}
 
-        {/* Previous iterations' thinking (collapsed, not actively thinking) */}
+        {/* Previous iterations' thinking */}
         {isLoading && previousIterations.map((content, index) => (
           <ThinkingWidget
             key={`prev-${index}`}
@@ -519,7 +551,7 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
           />
         ))}
 
-        {/* Current iteration's thinking - actively streaming */}
+        {/* Current iteration's thinking */}
         {isLoading && streamingContent && (
           <ThinkingWidget
             key="current-thinking"
@@ -528,11 +560,10 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
           />
         )}
 
-        {/* Accumulated tool calls - only show consult_boss messages */}
+        {/* Tool calls - only show consult_boss messages */}
         {isLoading && streamingToolCalls.length > 0 && (
           <div className="space-y-2">
             {streamingToolCalls.map(toolCall => {
-              // consult_boss: Show as chat bubble when complete
               if (toolCall.name === 'consult_boss') {
                 if (toolCall.status === 'complete') {
                   const args = toolCall.arguments as { message?: string; type?: string }
@@ -557,14 +588,10 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
                 }
                 return null
               }
-
-              // All other tools: Hidden from user (only consult_boss is visible)
-              // This includes: update_tasks, ask_user, request_task_approval,
-              // read_file, list_directory, search_files, edit_file, etc.
               return null
             })}
 
-            {/* Show compact "Working..." indicator when tools are executing */}
+            {/* Working indicator */}
             {streamingToolCalls.some(tc =>
               tc.status === 'executing' &&
               !['consult_boss', 'update_tasks', 'ask_user', 'request_task_approval'].includes(tc.name)
@@ -607,7 +634,7 @@ export function MarkusPanel({ workspaceFolders, openFiles }: MarkusPanelProps) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Debug panel trigger */}
+      {/* Debug panel */}
       <div className="px-3 py-1 border-t border-border/30 flex justify-end">
         <ConversationDebugPanel conversation={conversation} />
       </div>

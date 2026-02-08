@@ -15,9 +15,9 @@ import {
   MarkusSettings,
   Conversation,
   ChatMessage,
-  ToolCallRecord,
   MemoryUpdateProposal
 } from './types'
+import { createIPCTransport, IPCTransport } from './transport'
 import {
   readSettings,
   writeSettings,
@@ -40,6 +40,7 @@ import {
   loadTaskList,
   deleteTaskList
 } from './tasks'
+import { createLLMClient } from './llm'
 
 // Thought loop imports
 import {
@@ -73,14 +74,11 @@ const activeRequests = new Map<string, AbortController>()
 /** Active conversation logs (in-memory cache for current sessions) */
 const activeConversationLogs = new Map<string, ConversationLog>()
 
-/** Pending tool approvals */
-const pendingToolApprovals = new Map<string, {
-  resolve: (approved: boolean) => void
-  toolCall: ToolCallRecord
-}>()
-
 /** Pending memory update proposals */
 const pendingMemoryProposals = new Map<string, MemoryUpdateProposal>()
+
+/** Global transport instance - initialized per setup call */
+let transport: IPCTransport | null = null
 
 /**
  * Sets up all Markus IPC handlers.
@@ -92,6 +90,9 @@ export function setupMarkusHandlers(
   getOpenFiles: () => string[],
   openFile: (filePath: string) => Promise<void>
 ) {
+  // Create transport for IPC communication
+  transport = createIPCTransport(getMainWindow)
+
   // ========================================================================
   // Settings Handlers
   // ========================================================================
@@ -188,10 +189,9 @@ export function setupMarkusHandlers(
     yoloMode: boolean
   }) => {
     const { conversation, message, planningMode, yoloMode } = args
-    const mainWindow = getMainWindow()
 
-    if (!mainWindow) {
-      return { success: false, error: 'No window available' }
+    if (!transport) {
+      return { success: false, error: 'Transport not initialized' }
     }
 
     const settings = await readSettings()
@@ -254,73 +254,35 @@ export function setupMarkusHandlers(
     activeRequests.set(conversation.id, abortController)
 
     try {
-      // Create event handler for UI updates
+      // Create event handler for UI updates via transport
+      // Note: The transport is already sending events, so this handler just
+      // forwards streaming events for UI synchronization
       const handleEvent = (event: ThoughtLoopEvent) => {
         switch (event.type) {
           case 'llm_streaming':
-            mainWindow.webContents.send('markus:messageChunk', {
-              conversationId: conversation.id,
-              chunk: event.chunk
-            })
-            break
-
-          case 'tool_started': {
-            // Convert to old format for UI compatibility
-            const toolCallRecord: ToolCallRecord = {
-              id: event.toolCall.id,
-              name: event.toolCall.name,
-              arguments: event.toolCall.arguments,
-              status: 'pending',
-              startedAt: event.toolCall.startedAt
-            }
-            mainWindow.webContents.send('markus:toolCallStarted', {
-              conversationId: conversation.id,
-              toolCall: toolCallRecord
-            })
-            break
-          }
-
-          case 'tool_complete':
-            mainWindow.webContents.send('markus:toolCallComplete', {
-              conversationId: conversation.id,
-              toolCallId: event.toolCallId,
-              result: {
-                success: event.result.success,
-                result: event.result.data,
-                error: event.result.error
-              }
-            })
+            transport!.sendChunk(conversation.id, event.chunk)
             break
 
           case 'loop_blocked':
-            if (event.uiData) {
-              mainWindow.webContents.send('markus:blockingTool', {
-                conversationId: conversation.id,
-                uiData: event.uiData
-              })
-            }
+            // Already sent by transport in LoopController
             break
 
           case 'error':
-            mainWindow.webContents.send('markus:requestError', {
-              conversationId: conversation.id,
-              error: event.message
-            })
+            transport!.sendError(conversation.id, event.message)
             break
         }
       }
 
-      // Run thought loop with new controller
+      // Run thought loop with transport
       const result = await runThoughtLoop({
         log,
         settings,
         workspaceFolders,
         filebarId,
-        mainWindow,
+        transport: transport!,
         getOpenFiles,
         onEvent: handleEvent,
         yoloMode,
-        waitForToolApproval,
         abortSignal: abortController.signal
       })
 
@@ -336,18 +298,11 @@ export function setupMarkusHandlers(
       // Send task list update
       const taskList = await loadTaskList(filebarId, conversation.id)
       if (taskList) {
-        mainWindow.webContents.send('markus:tasksUpdated', {
-          conversationId: conversation.id,
-          tasks: taskList.tasks
-        })
+        transport!.sendTasksUpdated(conversation.id, taskList.tasks)
       }
 
       // Notify completion
-      mainWindow.webContents.send('markus:requestComplete', {
-        conversationId: conversation.id,
-        messageId: assistantMessage.id,
-        waitingForInput: result.waitingForInput
-      })
+      transport!.sendComplete(conversation.id, result.waitingForInput)
 
       return {
         success: true,
@@ -359,10 +314,7 @@ export function setupMarkusHandlers(
       assistantMessage.error = String(error)
       await saveConversation(conversation)
 
-      mainWindow.webContents.send('markus:requestError', {
-        conversationId: conversation.id,
-        error: String(error)
-      })
+      transport!.sendError(conversation.id, String(error))
 
       return { success: false, error: String(error) }
     } finally {
@@ -375,6 +327,12 @@ export function setupMarkusHandlers(
     if (controller) {
       controller.abort()
       activeRequests.delete(conversationId)
+
+      // Cancel any pending transport operations
+      if (transport) {
+        transport.cancelPending(conversationId)
+      }
+
       return { success: true }
     }
     return { success: false, error: 'No active request' }
@@ -389,12 +347,17 @@ export function setupMarkusHandlers(
     toolCallId: string
     approved: boolean
   }) => {
-    const key = `${args.conversationId}:${args.toolCallId}`
-    const pending = pendingToolApprovals.get(key)
+    if (!transport) {
+      return { success: false, error: 'Transport not initialized' }
+    }
 
-    if (pending) {
-      pending.resolve(args.approved)
-      pendingToolApprovals.delete(key)
+    const resolved = transport.resolveToolApproval(
+      args.conversationId,
+      args.toolCallId,
+      args.approved
+    )
+
+    if (resolved) {
       return { success: true }
     }
 
@@ -430,13 +393,9 @@ export function setupMarkusHandlers(
     // Delete the task list
     await deleteTaskList(filebarId, conversationId)
 
-    // Notify frontend
-    const mainWindow = getMainWindow()
-    if (mainWindow) {
-      mainWindow.webContents.send('markus:tasksUpdated', {
-        conversationId,
-        tasks: []
-      })
+    // Notify frontend via transport
+    if (transport) {
+      transport.sendTasksUpdated(conversationId, [])
     }
 
     return { success: true }
@@ -601,24 +560,3 @@ export function setupMarkusHandlers(
   }
 }
 
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/**
- * Waits for user approval of a tool call.
- */
-function waitForToolApproval(conversationId: string, toolCall: ToolCallRecord): Promise<boolean> {
-  return new Promise(resolve => {
-    const key = `${conversationId}:${toolCall.id}`
-    pendingToolApprovals.set(key, { resolve, toolCall })
-
-    // Auto-reject after 5 minutes
-    setTimeout(() => {
-      if (pendingToolApprovals.has(key)) {
-        pendingToolApprovals.delete(key)
-        resolve(false)
-      }
-    }, 5 * 60 * 1000)
-  })
-}

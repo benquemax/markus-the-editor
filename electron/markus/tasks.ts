@@ -11,7 +11,6 @@
 import path from 'path'
 import fs from 'fs/promises'
 import { existsSync } from 'fs'
-import { v4 as uuidv4 } from 'uuid'
 import { Task, TaskList } from './types'
 import { getConfigDir } from './settings'
 
@@ -39,8 +38,50 @@ function getTaskListPath(filebarId: string, conversationId: string): string {
 }
 
 /**
+ * Deduplicates and normalizes a task list.
+ * - Removes duplicate tasks (same description, keeping earliest)
+ * - Migrates legacy UUID IDs to short IDs
+ */
+function cleanupTaskList(taskList: TaskList): void {
+  const seenDescriptions = new Map<string, Task>()
+  const cleanedTasks: Task[] = []
+
+  for (const task of taskList.tasks) {
+    const normalizedDesc = task.description.toLowerCase().trim()
+
+    // Check for duplicate
+    const existing = seenDescriptions.get(normalizedDesc)
+    if (existing) {
+      // Keep the one with higher priority or done status
+      if (task.status === 'done' && existing.status !== 'done') {
+        // Replace with done version
+        const idx = cleanedTasks.indexOf(existing)
+        cleanedTasks[idx] = task
+        seenDescriptions.set(normalizedDesc, task)
+      }
+      continue
+    }
+
+    seenDescriptions.set(normalizedDesc, task)
+    cleanedTasks.push(task)
+  }
+
+  // Reassign short IDs if any have legacy UUID format
+  let needsReindex = cleanedTasks.some(t => !t.id.match(/^t\d+$/))
+  if (needsReindex) {
+    cleanedTasks.forEach((task, idx) => {
+      task.id = `t${idx + 1}`
+    })
+  }
+
+  taskList.tasks = cleanedTasks
+  taskList.updatedAt = Date.now()
+}
+
+/**
  * Loads the task list for a conversation.
  * Returns null if no task list exists.
+ * Automatically cleans up duplicates and migrates legacy IDs.
  */
 export async function loadTaskList(
   filebarId: string,
@@ -54,7 +95,19 @@ export async function loadTaskList(
 
   try {
     const content = await fs.readFile(filePath, 'utf-8')
-    return JSON.parse(content) as TaskList
+    const taskList = JSON.parse(content) as TaskList
+
+    // Clean up any duplicates or legacy IDs
+    const originalCount = taskList.tasks.length
+    cleanupTaskList(taskList)
+
+    if (taskList.tasks.length !== originalCount) {
+      console.log(`[Markus] Cleaned up ${originalCount - taskList.tasks.length} duplicate tasks`)
+      // Save the cleaned up list
+      await saveTaskList(filebarId, taskList)
+    }
+
+    return taskList
   } catch (error) {
     console.error('[Markus] Failed to load task list:', error)
     return null
@@ -112,16 +165,49 @@ export function createTaskList(conversationId: string): TaskList {
 }
 
 /**
+ * Generates a short sequential ID for tasks within a conversation.
+ * Uses format: t1, t2, t3, etc.
+ */
+function generateShortId(taskList: TaskList): string {
+  // Find the highest existing numeric ID
+  let maxNum = 0
+  for (const task of taskList.tasks) {
+    const match = task.id.match(/^t(\d+)$/)
+    if (match) {
+      maxNum = Math.max(maxNum, parseInt(match[1], 10))
+    }
+  }
+  return `t${maxNum + 1}`
+}
+
+/**
  * Adds a task to the task list.
  * Returns the new task with generated ID.
+ * Skips duplicates - if a task with the same description already exists
+ * (and isn't done), returns the existing task instead.
  */
 export function addTask(
   taskList: TaskList,
   description: string,
   priority: number = 0
 ): Task {
+  // Check for existing task with same description (case-insensitive)
+  const normalizedDesc = description.toLowerCase().trim()
+  const existing = taskList.tasks.find(
+    t => t.description.toLowerCase().trim() === normalizedDesc && t.status !== 'done'
+  )
+
+  if (existing) {
+    // Update priority if higher
+    if (priority > existing.priority) {
+      existing.priority = priority
+      taskList.updatedAt = Date.now()
+    }
+    return existing
+  }
+
   const task: Task = {
-    id: uuidv4(),
+    id: generateShortId(taskList),
     description,
     status: 'pending',
     priority
@@ -219,6 +305,7 @@ export function areAllTasksDone(taskList: TaskList): boolean {
 
 /**
  * Formats the task list for injection into the system prompt.
+ * Includes task IDs so the LLM can reference them when marking tasks complete.
  */
 export function formatTaskListForPrompt(taskList: TaskList | null): string {
   if (!taskList || taskList.tasks.length === 0) {
@@ -231,11 +318,12 @@ export function formatTaskListForPrompt(taskList: TaskList | null): string {
   const blocked = taskList.tasks.filter(t => t.status === 'blocked')
 
   let output = '## Current Tasks\n\n'
+  output += 'Use the task ID when calling update_tasks with complete/update/remove.\n\n'
 
   if (inProgress.length > 0) {
     output += '### In Progress\n'
     for (const task of inProgress) {
-      output += `- [~] ${task.description}\n`
+      output += `- [~] (${task.id}) ${task.description}\n`
     }
     output += '\n'
   }
@@ -243,7 +331,7 @@ export function formatTaskListForPrompt(taskList: TaskList | null): string {
   if (pending.length > 0) {
     output += '### Pending\n'
     for (const task of pending) {
-      output += `- [ ] ${task.description}\n`
+      output += `- [ ] (${task.id}) ${task.description}\n`
     }
     output += '\n'
   }
@@ -251,7 +339,7 @@ export function formatTaskListForPrompt(taskList: TaskList | null): string {
   if (blocked.length > 0) {
     output += '### Blocked\n'
     for (const task of blocked) {
-      output += `- [!] ${task.description}${task.blockedBy ? ` (blocked: ${task.blockedBy})` : ''}\n`
+      output += `- [!] (${task.id}) ${task.description}${task.blockedBy ? ` (blocked: ${task.blockedBy})` : ''}\n`
     }
     output += '\n'
   }
@@ -259,7 +347,7 @@ export function formatTaskListForPrompt(taskList: TaskList | null): string {
   if (done.length > 0) {
     output += '### Done\n'
     for (const task of done) {
-      output += `- [x] ${task.description}\n`
+      output += `- [x] (${task.id}) ${task.description}\n`
     }
     output += '\n'
   }
