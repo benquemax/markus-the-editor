@@ -53,8 +53,8 @@ import type {
   AgentStatusInfo
 } from '../../lib/markus/types'
 
-// Server URL - can be configured via environment or settings
-const MARKUS_SERVER_URL = 'http://localhost:3847'
+// Fallback URL when running outside Electron (e.g. browser dev)
+const DEFAULT_SERVER_URL = 'http://localhost:3847'
 
 interface MarkusPanelProps {
   workspaceFolders: string[]
@@ -133,12 +133,36 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
   // Initialize client and check server connection
   useEffect(() => {
     const initClient = async () => {
-      const client = createMarkusClient(MARKUS_SERVER_URL)
+      // Get server URL from Electron main process, or use default
+      let serverUrl = DEFAULT_SERVER_URL
+      try {
+        serverUrl = await window.electron.markus.getServerUrl()
+      } catch {
+        // Running outside Electron or IPC not available — use default
+      }
+
+      const client = createMarkusClient(serverUrl)
       clientRef.current = client
 
       try {
-        // Check server health
-        await client.health()
+        // Retry health check — embedded server may still be starting
+        let connected = false
+        for (let attempt = 0; attempt < 10; attempt++) {
+          try {
+            await client.health()
+            connected = true
+            break
+          } catch {
+            if (attempt < 9) {
+              await new Promise(resolve => setTimeout(resolve, 500))
+            }
+          }
+        }
+
+        if (!connected) {
+          throw new Error(`Cannot connect to Markus server at ${serverUrl}`)
+        }
+
         setServerConnected(true)
         setServerError(null)
 
@@ -510,10 +534,10 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
           <WifiOff className="w-12 h-12 text-amber-500 mb-4" />
           <h3 className="text-lg font-medium mb-2">Server Not Connected</h3>
           <p className="text-sm text-muted-foreground mb-4">
-            {serverError || `Cannot connect to Markus server at ${MARKUS_SERVER_URL}`}
+            {serverError || 'Cannot connect to Markus server'}
           </p>
           <p className="text-xs text-muted-foreground">
-            Start the server with: <code className="bg-muted px-1 py-0.5 rounded">npm run start</code> in packages/markus-server
+            The embedded server may have failed to start. Check the console for errors.
           </p>
         </div>
       </div>

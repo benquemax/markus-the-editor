@@ -10,6 +10,8 @@ export default defineConfig({
     electron([
       {
         entry: 'electron/main.ts',
+        // Don't auto-start electron — concurrently manages it in dev:full
+        onstart() { /* noop */ },
         vite: {
           build: {
             outDir: 'dist-electron',
@@ -18,7 +20,7 @@ export default defineConfig({
               formats: ['cjs']
             },
             rollupOptions: {
-              external: ['electron', 'electron-store', 'chokidar', 'simple-git'],
+              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws'],
               output: {
                 entryFileNames: 'main.js'
               }
@@ -28,9 +30,8 @@ export default defineConfig({
       },
       {
         entry: 'electron/preload.ts',
-        onstart(options) {
-          options.reload()
-        },
+        // Don't auto-start electron — concurrently manages it in dev:full
+        onstart() { /* noop */ },
         vite: {
           build: {
             outDir: 'dist-electron',

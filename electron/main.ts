@@ -9,6 +9,7 @@ import { setupAiHandlers } from './ai'
 import { setupFileExplorerHandlers } from './fileExplorer'
 import { setupDirectoryWatcherHandlers, stopDirectoryWatcher } from './directoryWatcher'
 import { setupMarkusHandlers } from './markus/handlers'
+import { startEmbeddedServer, stopEmbeddedServer, getServerPort } from './markus/embeddedServer'
 import Store from 'electron-store'
 
 // Disable GPU acceleration if it causes issues on some Linux systems
@@ -364,6 +365,8 @@ setupDirectoryWatcherHandlers(ipcMain, () => mainWindow)
 let workspaceFolders: string[] = []
 let openFilePaths: string[] = []
 
+ipcMain.handle('markus:getServerUrl', () => `http://localhost:${getServerPort()}`)
+
 ipcMain.handle('markus:updateWorkspace', (_, folders: string[]) => {
   workspaceFolders = folders
   return { success: true }
@@ -469,7 +472,15 @@ ipcMain.handle('filebar:delete', async (_, fileName: string) => {
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Start embedded Markus server before creating the window
+  try {
+    await startEmbeddedServer()
+  } catch (err) {
+    console.error('[Main] Failed to start embedded Markus server:', err)
+    // Continue anyway — the UI will show a "server not connected" state
+  }
+
   createWindow()
 
   // Handle file opened from command line on Linux (file manager, terminal, etc.)
@@ -489,9 +500,10 @@ app.whenReady().then(() => {
   })
 })
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   stopFileWatcher()
   stopDirectoryWatcher()
+  await stopEmbeddedServer()
   if (process.platform !== 'darwin') {
     app.quit()
   }

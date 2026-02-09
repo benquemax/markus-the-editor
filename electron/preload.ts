@@ -240,6 +240,9 @@ export interface ElectronAPI {
     delete: (fileName: string) => Promise<{ success: boolean; error?: string }>
   }
   markus: {
+    // Server URL (provided by embedded server or external)
+    getServerUrl: () => Promise<string>
+
     // Settings
     getSettings: () => Promise<MarkusSettings>
     setSettings: (settings: Partial<MarkusSettings>) => Promise<MarkusSettings>
@@ -434,6 +437,9 @@ const api: ElectronAPI = {
     delete: (fileName) => ipcRenderer.invoke('filebar:delete', fileName)
   },
   markus: {
+    // Server URL
+    getServerUrl: () => ipcRenderer.invoke('markus:getServerUrl'),
+
     // Settings
     getSettings: () => ipcRenderer.invoke('markus:getSettings'),
     setSettings: (settings) => ipcRenderer.invoke('markus:setSettings', settings),
