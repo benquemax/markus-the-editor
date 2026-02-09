@@ -115,10 +115,36 @@ export {
   shutdownConversation,
   isInitialized as isMultiAgentInitialized,
   isInitializedForConversation,
-  getConversationAgents
+  getConversationAgents,
+  searchRAG,
+  getRAGIndexStatus,
+  reindexWorkspace,
+  getConversationIndexManager
 } from './multiAgent'
 
 export type { AgentDefinition } from './multiAgent'
+
+// RAG system
+export {
+  IndexManager,
+  getIndexManager,
+  resetIndexManager,
+  type IndexStatus
+} from './rag/indexManager'
+
+export {
+  VectorStore,
+  type VectorSearchResult
+} from './rag/vectorStore'
+
+export {
+  createEmbeddingProvider
+} from './rag/embeddings'
+
+export {
+  chunkDocument,
+  type TextChunk
+} from './rag/chunker'
 
 // Tool presets for generic agents
 export { TOOL_PRESETS, DEFAULT_TOOLS } from './agents/generic'

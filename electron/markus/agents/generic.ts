@@ -35,11 +35,11 @@ import { agentContextManager } from './contextManager'
 export const TOOL_PRESETS: Record<string, string[]> = {
   'read-only': ['read_file', 'list_directory', 'search_files'],
   'editor': ['read_file', 'list_directory', 'search_files', 'edit_file', 'create_file', 'delete_file', 'create_directory'],
-  'research': ['read_file', 'list_directory', 'search_files', 'search_web', 'duck_ai'],
+  'research': ['read_file', 'list_directory', 'search_files', 'search_web', 'duck_ai', 'vector_search'],
   'full': [
     'read_file', 'list_directory', 'search_files',
     'edit_file', 'create_file', 'delete_file', 'create_directory',
-    'search_web', 'duck_ai'
+    'search_web', 'duck_ai', 'vector_search'
   ],
 }
 
@@ -58,6 +58,8 @@ const ALLOWED_GENERIC_TOOLS = new Set([
   'edit_file', 'create_file', 'delete_file', 'create_directory',
   // Web
   'search_web', 'duck_ai',
+  // RAG
+  'vector_search',
   // Context
   'get_open_files', 'get_workspace_folders',
   // Memory

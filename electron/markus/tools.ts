@@ -20,7 +20,8 @@ import {
 } from './security'
 import {
   isInitialized as isMultiAgentInitialized,
-  routeUserMessage
+  routeUserMessage,
+  searchRAG
 } from './multiAgent'
 import { AgentType, AgentTask } from './agents/types'
 import { GenericAgent } from './agents/generic'
@@ -176,6 +177,24 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
         query: {
           type: 'string',
           description: 'Search query'
+        }
+      },
+      required: ['query']
+    }
+  },
+  {
+    name: 'vector_search',
+    description: 'Semantic search across indexed workspace files. Returns relevant chunks with similarity scores. Requires RAG indexing to be enabled.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: {
+          type: 'string',
+          description: 'Natural language search query'
+        },
+        limit: {
+          type: 'number',
+          description: 'Maximum number of results to return (default: 5)'
         }
       },
       required: ['query']
@@ -448,6 +467,8 @@ export async function executeTool(
         return await executeSearchFiles(args, context)
       case 'search_web':
         return await executeSearchWeb(args)
+      case 'vector_search':
+        return await executeVectorSearch(args, context)
       case 'duck_ai':
         return await executeDuckAi(args)
       case 'get_open_files':
@@ -802,6 +823,36 @@ async function executeSearchWeb(args: Record<string, unknown>): Promise<ToolResu
     success: false,
     error: 'Web search is not configured. Please set up SearxNG in settings.yaml'
   }
+}
+
+async function executeVectorSearch(
+  args: Record<string, unknown>,
+  context: ToolContext
+): Promise<ToolResult> {
+  const query = String(args.query || '')
+  const limit = typeof args.limit === 'number' ? args.limit : 5
+
+  if (!query) {
+    return { success: false, error: 'Query is required' }
+  }
+
+  // Use conversationId from context if available for per-conversation index
+  const conversationId = context.conversationId as string | undefined
+
+  const results = await searchRAG(query, limit, conversationId)
+
+  if (results.length === 0) {
+    return {
+      success: true,
+      result: 'No results found. The RAG index may not be initialized or no documents matched your query.'
+    }
+  }
+
+  const formatted = results.map((r, i) =>
+    `[${i + 1}] ${r.filePath} (lines ${r.startLine}-${r.endLine}, score: ${r.score.toFixed(2)})\n${r.content}`
+  ).join('\n\n')
+
+  return { success: true, result: formatted }
 }
 
 async function executeDuckAi(args: Record<string, unknown>): Promise<ToolResult> {

@@ -502,10 +502,14 @@ export function onError(
 
 /**
  * Perform semantic search in the RAG index.
+ *
+ * When conversationId is provided, searches the per-conversation index first.
+ * Falls back to the global index if no per-conversation index exists.
  */
 export async function searchRAG(
   query: string,
-  limit: number = 10
+  limit: number = 10,
+  conversationId?: string
 ): Promise<Array<{
   filePath: string
   content: string
@@ -513,11 +517,16 @@ export async function searchRAG(
   startLine: number
   endLine: number
 }>> {
-  if (!state.indexManager) {
+  // Try per-conversation index first
+  const indexManager = conversationId
+    ? (conversationStates.get(conversationId)?.indexManager ?? state.indexManager)
+    : state.indexManager
+
+  if (!indexManager) {
     return []
   }
 
-  const results = await state.indexManager.search(query, limit)
+  const results = await indexManager.search(query, limit)
 
   return results.map(r => ({
     filePath: r.document.filePath,
@@ -526,4 +535,12 @@ export async function searchRAG(
     startLine: r.document.metadata.startLine,
     endLine: r.document.metadata.endLine
   }))
+}
+
+/**
+ * Get the IndexManager for a specific conversation.
+ * Returns null if conversation doesn't exist or has no index.
+ */
+export function getConversationIndexManager(conversationId: string): IndexManager | null {
+  return conversationStates.get(conversationId)?.indexManager ?? null
 }

@@ -29,6 +29,7 @@ const md = new MarkdownIt({
   breaks: true
 })
 import { ChatMessage } from './ChatMessage'
+import { AgentDefinitionsPanel } from './AgentDefinitionsPanel'
 import { ChatInput } from './ChatInput'
 import { AgentActivityDisplay } from './AgentActivityDisplay'
 import { ConversationDebugPanel } from './ConversationDebugPanel'
@@ -100,6 +101,9 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
   // Agent selection state — which API-defined agents to use for new conversations
   const [agentDefinitions, setAgentDefinitions] = useState<AgentDefinition[]>([])
   const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set())
+
+  // Settings panel state
+  const [showSettings, setShowSettings] = useState(false)
 
   // Thought loop state
   const [tasks, setTasks] = useState<Task[]>([])
@@ -421,10 +425,21 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
     })
   }, [])
 
-  // Handle opening settings (still uses Electron IPC)
-  const handleOpenSettings = useCallback(async () => {
-    // This still uses IPC since settings file is local
-    await window.electron.markus.openSettings()
+  // Handle opening settings (in-app agent definitions panel)
+  const handleOpenSettings = useCallback(() => {
+    setShowSettings(true)
+  }, [])
+
+  // Handle agents changed from settings panel
+  const handleAgentsChanged = useCallback(async () => {
+    if (!clientRef.current) return
+    try {
+      const agents = await clientRef.current.listAgentDefinitions()
+      setAgentDefinitions(agents)
+      setSelectedAgentIds(new Set(agents.map(a => a.id)))
+    } catch {
+      // Ignore - agents may not be available
+    }
   }, [])
 
   // Handle user response to ask_user blocking tool
@@ -534,6 +549,17 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
           </button>
         </div>
       </div>
+    )
+  }
+
+  // Render settings panel if open
+  if (showSettings && clientRef.current) {
+    return (
+      <AgentDefinitionsPanel
+        client={clientRef.current}
+        onClose={() => setShowSettings(false)}
+        onAgentsChanged={handleAgentsChanged}
+      />
     )
   }
 

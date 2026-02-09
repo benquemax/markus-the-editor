@@ -4159,7 +4159,7 @@ function createEditorAgent(settings, workspaceFolders = []) {
 var TOOL_PRESETS = {
   "read-only": ["read_file", "list_directory", "search_files"],
   "editor": ["read_file", "list_directory", "search_files", "edit_file", "create_file", "delete_file", "create_directory"],
-  "research": ["read_file", "list_directory", "search_files", "search_web", "duck_ai"],
+  "research": ["read_file", "list_directory", "search_files", "search_web", "duck_ai", "vector_search"],
   "full": [
     "read_file",
     "list_directory",
@@ -4169,7 +4169,8 @@ var TOOL_PRESETS = {
     "delete_file",
     "create_directory",
     "search_web",
-    "duck_ai"
+    "duck_ai",
+    "vector_search"
   ]
 };
 var DEFAULT_TOOLS = TOOL_PRESETS["read-only"];
@@ -4186,6 +4187,8 @@ var ALLOWED_GENERIC_TOOLS = /* @__PURE__ */ new Set([
   // Web
   "search_web",
   "duck_ai",
+  // RAG
+  "vector_search",
   // Context
   "get_open_files",
   "get_workspace_folders",
@@ -4789,8 +4792,36 @@ async function routeUserMessage(message, context = {}) {
     workspaceFolders: state.workspaceFolders
   });
 }
+function getRAGIndexStatus() {
+  if (state.indexManager) {
+    return state.indexManager.getStatus();
+  }
+  return null;
+}
+async function reindexWorkspace() {
+  if (state.indexManager) {
+    await state.indexManager.indexWorkspace();
+  }
+}
 function isInitialized() {
   return state.initialized;
+}
+async function searchRAG(query, limit = 10, conversationId) {
+  const indexManager = conversationId ? conversationStates.get(conversationId)?.indexManager ?? state.indexManager : state.indexManager;
+  if (!indexManager) {
+    return [];
+  }
+  const results = await indexManager.search(query, limit);
+  return results.map((r) => ({
+    filePath: r.document.filePath,
+    content: r.document.content,
+    score: r.score,
+    startLine: r.document.metadata.startLine,
+    endLine: r.document.metadata.endLine
+  }));
+}
+function getConversationIndexManager(conversationId) {
+  return conversationStates.get(conversationId)?.indexManager ?? null;
 }
 
 // ../../electron/markus/tasks.ts
@@ -5127,6 +5158,24 @@ var TOOL_DEFINITIONS = [
     }
   },
   {
+    name: "vector_search",
+    description: "Semantic search across indexed workspace files. Returns relevant chunks with similarity scores. Requires RAG indexing to be enabled.",
+    parameters: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description: "Natural language search query"
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of results to return (default: 5)"
+        }
+      },
+      required: ["query"]
+    }
+  },
+  {
     name: "duck_ai",
     description: "Get a quick answer using DuckDuckGo AI.",
     parameters: {
@@ -5374,6 +5423,8 @@ async function executeTool(toolName, args, context) {
         return await executeSearchFiles(args, context);
       case "search_web":
         return await executeSearchWeb(args);
+      case "vector_search":
+        return await executeVectorSearch(args, context);
       case "duck_ai":
         return await executeDuckAi(args);
       case "get_open_files":
@@ -5617,6 +5668,26 @@ async function executeSearchWeb(args) {
     success: false,
     error: "Web search is not configured. Please set up SearxNG in settings.yaml"
   };
+}
+async function executeVectorSearch(args, context) {
+  const query = String(args.query || "");
+  const limit = typeof args.limit === "number" ? args.limit : 5;
+  if (!query) {
+    return { success: false, error: "Query is required" };
+  }
+  const conversationId = context.conversationId;
+  const results = await searchRAG(query, limit, conversationId);
+  if (results.length === 0) {
+    return {
+      success: true,
+      result: "No results found. The RAG index may not be initialized or no documents matched your query."
+    };
+  }
+  const formatted = results.map(
+    (r, i) => `[${i + 1}] ${r.filePath} (lines ${r.startLine}-${r.endLine}, score: ${r.score.toFixed(2)})
+${r.content}`
+  ).join("\n\n");
+  return { success: true, result: formatted };
 }
 async function executeDuckAi(args) {
   const query = String(args.query || "");
@@ -7408,9 +7479,11 @@ function getFilebarId(folders) {
 export {
   DEFAULT_LOOP_CONFIG,
   DEFAULT_TOOLS,
+  IndexManager,
   LoopController,
   TOOL_DEFINITIONS,
   TOOL_PRESETS,
+  VectorStore,
   addIteration,
   addTask,
   addUserMessage,
@@ -7418,8 +7491,10 @@ export {
   buildInitialContext,
   buildOrchestratorTools,
   buildSystemPrompt,
+  chunkDocument,
   contextToLLMMessages,
   convertToOldFormat,
+  createEmbeddingProvider,
   createLLMClient,
   createLog,
   createRequestContext,
@@ -7435,9 +7510,12 @@ export {
   getConfigDir,
   getConsultBossMessages,
   getConversationAgents,
+  getConversationIndexManager,
   getDisplayMessages,
   getFileReadCache,
   getFilebarId,
+  getIndexManager,
+  getRAGIndexStatus,
   getRAGSettings,
   getRecentIterations,
   getSettingsPath,
@@ -7453,10 +7531,13 @@ export {
   loadTaskList,
   migrateConversation,
   readSettings,
+  reindexWorkspace,
   removeTask,
+  resetIndexManager,
   runThoughtLoop,
   saveLog,
   saveTaskList,
+  searchRAG,
   setError,
   setMode,
   shutdownConversation,
