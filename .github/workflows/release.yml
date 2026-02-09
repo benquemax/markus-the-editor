@@ -62,7 +62,7 @@ jobs:
         run: npm run build
 
       - name: Build DMG
-        run: npx electron-builder --mac dmg --publish=never
+        run: npx electron-builder --mac --publish=never
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
