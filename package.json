@@ -1,6 +1,6 @@
 {
   "name": "markus-the-editor",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "A local WYSIWYG Markdown editor built with Electron, React, and ProseMirror",
   "main": "dist-electron/main.js",
   "author": {
@@ -125,7 +125,14 @@
       }
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
       "category": "public.app-category.productivity",
       "icon": "resources/icons/icon.png",
       "artifactName": "${productName}-${version}.${ext}"
