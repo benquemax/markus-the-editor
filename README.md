@@ -42,7 +42,7 @@ chmod +x Markus-*.AppImage
 
 ## Tech Stack
 
-- **Electron 28+** - Desktop application shell
+- **Electron 31+** - Desktop application shell
 - **React 18** - UI framework
 - **ProseMirror** - Rich text editing engine
 - **TypeScript** - Type safety
@@ -68,7 +68,7 @@ npm install
 npm run dev:full
 ```
 
-This starts the Vite dev server and Electron together with hot reload. DevTools opens automatically.
+This builds the Markus server bundle, starts the Vite dev server, and launches Electron with hot reload. DevTools opens automatically.
 
 ### Run Production Build Locally
 

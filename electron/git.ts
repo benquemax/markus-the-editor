@@ -71,7 +71,9 @@ export function setupGitHandlers(ipcMain: IpcMain, getCurrentFilePath: () => str
 
   ipcMain.handle('git:status', async () => {
     const git = getGitInstance()
-    if (!git) throw new Error('No file open')
+    // Return null if no file is open instead of throwing
+    // This prevents console errors when components check git status on mount
+    if (!git) return null
     const status = await git.status()
     return {
       current: status.current,
@@ -88,7 +90,9 @@ export function setupGitHandlers(ipcMain: IpcMain, getCurrentFilePath: () => str
 
   ipcMain.handle('git:branches', async () => {
     const git = getGitInstance()
-    if (!git) throw new Error('No file open')
+    // Return null if no file is open instead of throwing
+    // This prevents console errors when components check git status on mount
+    if (!git) return null
     const branches = await git.branchLocal()
     return {
       all: branches.all,

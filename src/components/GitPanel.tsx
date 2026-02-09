@@ -35,6 +35,11 @@ export function GitPanel({ open, onOpenChange }: GitPanelProps) {
         window.electron.git.status(),
         window.electron.git.branches()
       ])
+      // Handle null responses when no file is open
+      if (!statusResult || !branchesResult) {
+        setError('No file open')
+        return
+      }
       setStatus(statusResult)
       setBranches(branchesResult)
     } catch (err) {

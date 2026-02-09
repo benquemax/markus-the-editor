@@ -309,7 +309,10 @@ function App() {
     try {
       await window.electron.git.fetch()
       const status = await window.electron.git.status()
-      setBehindCount(status.behind)
+      // Handle null response when no file is open
+      if (status) {
+        setBehindCount(status.behind)
+      }
     } catch {
       // Silently ignore fetch errors
     }
