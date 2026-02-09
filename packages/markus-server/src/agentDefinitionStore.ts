@@ -127,7 +127,7 @@ function validateAgentInput(
     if (!create.whenToUse) errors.push('whenToUse is required')
     if (!create.description) errors.push('description is required')
     if (!create.model) errors.push('model is required')
-    if (!create.endpoint) errors.push('endpoint is required')
+    // endpoint is optional — agents can inherit from providerId or main settings
   }
 
   // Validate slug format when provided
@@ -190,6 +190,7 @@ export async function createAgentDefinition(
     whenToUse: input.whenToUse,
     description: input.description,
     customInstructions: input.customInstructions,
+    providerId: input.providerId,
     model: input.model,
     endpoint: input.endpoint,
     apiKey: input.apiKey,
@@ -245,6 +246,11 @@ export async function updateAgentDefinition(
   // Preserve API key if the client sent the masked value
   const resolvedApiKey = preserveApiKey(updates.apiKey, existing.apiKey)
 
+  // Handle providerId: null means "clear provider reference"
+  const resolvedProviderId = updates.providerId === null
+    ? undefined
+    : (updates.providerId ?? existing.providerId)
+
   const updated: AgentDefinition = {
     ...existing,
     ...updates,
@@ -252,7 +258,8 @@ export async function updateAgentDefinition(
     id: existing.id,
     createdAt: existing.createdAt,
     updatedAt: Date.now(),
-    apiKey: resolvedApiKey
+    apiKey: resolvedApiKey,
+    providerId: resolvedProviderId
   }
 
   agents[id] = updated
@@ -275,6 +282,132 @@ export async function deleteAgentDefinition(id: string): Promise<boolean> {
 
   console.log(`[AgentDefinitionStore] Deleted agent "${name}" (${id})`)
   return true
+}
+
+// ============================================================================
+// Default Agents
+// ============================================================================
+
+/**
+ * Default agent definitions seeded on first startup.
+ * No providerId/endpoint/apiKey — they inherit main settings at runtime
+ * via resolveAgentDefinition().
+ */
+const DEFAULT_AGENT_TEMPLATES: Array<Omit<CreateAgentDefinitionRequest, 'model' | 'endpoint' | 'apiKey' | 'providerId'>> = [
+  {
+    slug: 'research-analyst',
+    name: 'Research Analyst',
+    description: 'Methodical investigator for deep research, fact verification, and evidence gathering',
+    roleDefinition: 'You are a meticulous Research Analyst. Your job is to conduct thorough investigations: reading files, searching codebases, querying the RAG index, and searching the web. You gather evidence methodically, cross-reference sources, and present clear, well-organized findings with full citations. You never guess when you can verify.',
+    whenToUse: 'Use when the task requires finding information, understanding existing content, verifying facts, or gathering context from files and the web.',
+    customInstructions: 'Always cite file paths and line numbers. Cross-reference multiple sources when possible. Present findings in structured format with confidence levels. Prefer searching over guessing.',
+    tools: ['read_file', 'list_directory', 'search_files', 'search_web', 'duck_ai', 'vector_search'],
+  },
+  {
+    slug: 'editor',
+    name: 'Editor',
+    description: 'Precision file editing specialist. Reads before editing, makes minimal targeted changes',
+    roleDefinition: 'You are a precision Editor. Your job is to create, modify, and delete files with surgical accuracy. You always read a file before editing it, understand its structure and conventions, then make the smallest possible change that accomplishes the goal. You preserve existing style, formatting, and conventions.',
+    whenToUse: 'Use when files need to be created, modified, or deleted.',
+    customInstructions: 'Always read files before editing. Make the smallest change that accomplishes the goal. Preserve existing style and formatting. When making multiple edits to the same file, plan all changes before starting.',
+    tools: ['read_file', 'list_directory', 'search_files', 'edit_file', 'create_file', 'delete_file', 'create_directory'],
+  },
+  {
+    slug: 'critical-examiner',
+    name: 'Critical Examiner',
+    description: 'Sharp-minded quality reviewer. Challenges logic, consistency, and accuracy',
+    roleDefinition: 'You are a sharp-minded Critical Examiner. Your job is to review content for correctness, logical consistency, factual accuracy, and potential issues. You challenge assumptions, spot weaknesses in arguments, identify inconsistencies, and verify claims against evidence. You provide specific, actionable feedback — never vague complaints.',
+    whenToUse: 'Use when work needs to be reviewed, validated, or checked for quality. Also for analyzing arguments, checking logical consistency, and stress-testing ideas.',
+    customInstructions: 'Be specific about issues — reference exact locations. Categorize issues by severity (critical, important, minor). Suggest fixes, not just problems. Acknowledge strengths alongside weaknesses.',
+    tools: ['read_file', 'list_directory', 'search_files'],
+  },
+  {
+    slug: 'creative-architect',
+    name: 'Creative Architect',
+    description: 'Visionary creative director for structure, ideation, and big-picture thinking',
+    roleDefinition: 'You are a visionary Creative Architect. Your job is to see the big picture: generating ideas, proposing structures, brainstorming creative solutions, and designing overall architecture. You think in systems and narratives, offering multiple approaches with clear trade-offs. You balance creativity with practicality.',
+    whenToUse: 'Use when the task needs creative thinking, brainstorming, structural planning, ideation, or high-level design decisions.',
+    customInstructions: 'Provide multiple options (at least 2-3 alternatives). Explain trade-offs clearly. Think about both immediate needs and long-term implications. Use structural metaphors and frameworks to organize ideas.',
+    tools: ['read_file', 'list_directory', 'search_files'],
+  },
+]
+
+/**
+ * Seeds default agent definitions if the store is empty.
+ * Called on server startup to ensure users have agents out of the box.
+ *
+ * Default agents get the main LLM model but NO endpoint/apiKey — these are
+ * resolved at runtime via resolveAgentDefinition() from the main settings.
+ */
+export async function ensureDefaultAgents(llmSettings: {
+  model: string
+  endpoint: string
+  apiKey: string
+}): Promise<void> {
+  const existing = await readAgentDefinitions()
+  if (Object.keys(existing).length > 0) {
+    console.log(`[AgentDefinitionStore] ${Object.keys(existing).length} agents already exist, skipping seed`)
+    return
+  }
+
+  console.log('[AgentDefinitionStore] No agents found, seeding defaults...')
+
+  for (const template of DEFAULT_AGENT_TEMPLATES) {
+    await createAgentDefinition({
+      ...template,
+      model: llmSettings.model,
+      // No endpoint/apiKey — resolved at runtime from main settings
+    })
+  }
+
+  console.log(`[AgentDefinitionStore] Seeded ${DEFAULT_AGENT_TEMPLATES.length} default agents`)
+}
+
+// ============================================================================
+// Agent Resolution
+// ============================================================================
+
+/**
+ * Resolves an agent definition's LLM configuration at runtime.
+ *
+ * Resolution order:
+ * 1. If providerId set → resolve endpoint/apiKey from that provider
+ * 2. If raw endpoint set (no providerId) → use as-is (backward compat)
+ * 3. Neither → fall back to main LLM settings
+ *
+ * Returns a copy with concrete endpoint/apiKey values filled in.
+ */
+export function resolveAgentDefinition(
+  agent: AgentDefinition,
+  providers: Array<{ id: string; endpoint: string; apiKey?: string }>,
+  mainLlmSettings: { endpoint: string; apiKey: string; model: string }
+): AgentDefinition {
+  // Case 1: Provider reference
+  if (agent.providerId) {
+    const provider = providers.find(p => p.id === agent.providerId)
+    if (provider) {
+      return {
+        ...agent,
+        endpoint: provider.endpoint,
+        apiKey: agent.apiKey || provider.apiKey,
+      }
+    }
+    // Provider not found — fall through to main settings
+    console.warn(`[AgentDefinitionStore] Provider ${agent.providerId} not found for agent ${agent.slug}, using main settings`)
+  }
+
+  // Case 2: Direct endpoint (backward compat)
+  if (agent.endpoint) {
+    return agent
+  }
+
+  // Case 3: No provider, no endpoint — use main settings
+  return {
+    ...agent,
+    endpoint: mainLlmSettings.endpoint,
+    apiKey: agent.apiKey || mainLlmSettings.apiKey,
+    model: agent.model || mainLlmSettings.model,
+  }
 }
 
 // ============================================================================

@@ -13,8 +13,13 @@ import { getConfig, ServerConfig } from './config'
 import { setupConversationRoutes } from './routes/conversations'
 import { setupSettingsRoutes } from './routes/settings'
 import { setupAgentRoutes } from './routes/agents'
+import { setupProviderRoutes } from './routes/providers'
+import { setupRAGRoutes } from './routes/rag'
 import { setupWebSocketHandler } from './websocket/handler'
 import { ConversationManager } from './conversationManager'
+import { ensureDefaultAgents } from './agentDefinitionStore'
+import { ensureDefaultProviders } from './providerStore'
+import { readSettings } from './settings'
 
 export interface MarkusServer {
   app: Express
@@ -94,6 +99,8 @@ export function createMarkusServer(config?: Partial<ServerConfig>): MarkusServer
   setupConversationRoutes(app, conversationManager)
   setupSettingsRoutes(app)
   setupAgentRoutes(app)
+  setupProviderRoutes(app)
+  setupRAGRoutes(app, conversationManager)
 
   // Setup WebSocket handler
   setupWebSocketHandler(wss, conversationManager)
@@ -118,8 +125,8 @@ export function createMarkusServer(config?: Partial<ServerConfig>): MarkusServer
     wss,
     conversationManager,
 
-    start(): Promise<void> {
-      return new Promise((resolve, reject) => {
+    async start(): Promise<void> {
+      await new Promise<void>((resolve, reject) => {
         httpServer.listen(serverConfig.port, serverConfig.host, () => {
           console.log(`[Markus Server] Listening on http://${serverConfig.host}:${serverConfig.port}`)
           console.log(`[Markus Server] WebSocket available at ws://${serverConfig.host}:${serverConfig.port}/ws`)
@@ -128,6 +135,23 @@ export function createMarkusServer(config?: Partial<ServerConfig>): MarkusServer
 
         httpServer.on('error', reject)
       })
+
+      // Seed default providers and agents after server starts (non-blocking)
+      try {
+        const settings = await readSettings()
+        await ensureDefaultProviders({
+          apiEndpoint: settings.llm.apiEndpoint,
+          apiKey: settings.llm.apiKey,
+          model: settings.llm.model,
+        })
+        await ensureDefaultAgents({
+          model: settings.llm.model,
+          endpoint: settings.llm.apiEndpoint,
+          apiKey: settings.llm.apiKey,
+        })
+      } catch (err) {
+        console.error('[Markus Server] Failed to seed defaults:', err)
+      }
     },
 
     stop(): Promise<void> {

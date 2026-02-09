@@ -6,12 +6,65 @@
  */
 
 // ============================================================================
+// Provider Types
+// ============================================================================
+
+/**
+ * An LLM provider configuration, allowing multiple agents to share
+ * the same endpoint and API key without duplication.
+ */
+export interface Provider {
+  id: string
+  name: string
+  /** Base URL, e.g. "https://api.mistral.ai/v1" */
+  endpoint: string
+  apiKey?: string
+  /** Suggested default model for this provider */
+  defaultModel?: string
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * Request to create a new provider.
+ */
+export interface CreateProviderRequest {
+  name: string
+  endpoint: string
+  apiKey?: string
+  defaultModel?: string
+}
+
+/**
+ * Request to update a provider. All fields optional.
+ */
+export interface UpdateProviderRequest {
+  name?: string
+  endpoint?: string
+  apiKey?: string
+  defaultModel?: string
+}
+
+/**
+ * Model information returned by OpenAI-compatible /v1/models endpoint.
+ */
+export interface ModelInfo {
+  id: string
+  owned_by?: string
+}
+
+// ============================================================================
 // Agent Definition Types
 // ============================================================================
 
 /**
  * An API-defined agent with instruction-driven behavior.
  * Clients create these via REST, then select which agents to use per conversation.
+ *
+ * LLM resolution order:
+ * 1. If providerId set → resolve endpoint/apiKey from that provider
+ * 2. If raw endpoint set (no providerId) → use as-is (backward compat)
+ * 3. Neither → fall back to main LLM settings from settings.yaml
  */
 export interface AgentDefinition {
   /** UUID, auto-generated */
@@ -29,8 +82,11 @@ export interface AgentDefinition {
   /** Additional per-agent instructions */
   customInstructions?: string
   // LLM configuration
+  /** Provider ID — if set, endpoint/apiKey are resolved from the provider at runtime */
+  providerId?: string
   model: string
-  endpoint: string
+  /** Direct endpoint override. Optional if providerId is set or using main settings. */
+  endpoint?: string
   apiKey?: string
   maxTokens: number
   temperature: number
@@ -45,6 +101,7 @@ export interface AgentDefinition {
 /**
  * Request to create a new agent definition.
  * All fields except id, createdAt, updatedAt.
+ * Either providerId or endpoint should be provided; if neither, main settings are used.
  */
 export interface CreateAgentDefinitionRequest {
   slug: string
@@ -53,8 +110,10 @@ export interface CreateAgentDefinitionRequest {
   whenToUse: string
   description: string
   customInstructions?: string
+  providerId?: string
   model: string
-  endpoint: string
+  /** Optional — not required if providerId is set or using main settings fallback */
+  endpoint?: string
   apiKey?: string
   maxTokens?: number
   temperature?: number
@@ -73,6 +132,7 @@ export interface UpdateAgentDefinitionRequest {
   whenToUse?: string
   description?: string
   customInstructions?: string
+  providerId?: string | null
   model?: string
   endpoint?: string
   apiKey?: string

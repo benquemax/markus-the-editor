@@ -26,6 +26,39 @@ export interface CreateConversationOptions {
 }
 
 // ============================================================================
+// Provider Types
+// ============================================================================
+
+export interface Provider {
+  id: string
+  name: string
+  endpoint: string
+  apiKey?: string
+  defaultModel?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CreateProviderOptions {
+  name: string
+  endpoint: string
+  apiKey?: string
+  defaultModel?: string
+}
+
+export interface UpdateProviderOptions {
+  name?: string
+  endpoint?: string
+  apiKey?: string
+  defaultModel?: string
+}
+
+export interface ModelInfo {
+  id: string
+  owned_by?: string
+}
+
+// ============================================================================
 // Agent Definition Types
 // ============================================================================
 
@@ -37,8 +70,10 @@ export interface AgentDefinition {
   whenToUse: string
   description: string
   customInstructions?: string
+  /** Provider ID — if set, endpoint/apiKey are resolved from the provider */
+  providerId?: string
   model: string
-  endpoint: string
+  endpoint?: string
   apiKey?: string
   maxTokens: number
   temperature: number
@@ -56,8 +91,9 @@ export interface CreateAgentDefinitionOptions {
   whenToUse: string
   description: string
   customInstructions?: string
+  providerId?: string
   model: string
-  endpoint: string
+  endpoint?: string
   apiKey?: string
   maxTokens?: number
   temperature?: number
@@ -73,6 +109,7 @@ export interface UpdateAgentDefinitionOptions {
   whenToUse?: string
   description?: string
   customInstructions?: string
+  providerId?: string | null
   model?: string
   endpoint?: string
   apiKey?: string
@@ -518,6 +555,91 @@ export class MarkusClient {
   }
 
   // ========================================================================
+  // Providers
+  // ========================================================================
+
+  /**
+   * Creates a new provider.
+   */
+  async createProvider(options: CreateProviderOptions): Promise<Provider> {
+    const response = await fetch(`${this.serverUrl}/providers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create provider')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Lists all providers (keys masked).
+   */
+  async listProviders(): Promise<Provider[]> {
+    const response = await fetch(`${this.serverUrl}/providers`)
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to list providers')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Updates a provider.
+   */
+  async updateProvider(id: string, updates: UpdateProviderOptions): Promise<Provider> {
+    const response = await fetch(`${this.serverUrl}/providers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Provider not found')
+      }
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to update provider')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Deletes a provider.
+   */
+  async deleteProvider(id: string): Promise<void> {
+    const response = await fetch(`${this.serverUrl}/providers/${id}`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok && response.status !== 404) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to delete provider')
+    }
+  }
+
+  /**
+   * Fetches available models from a provider's upstream API.
+   */
+  async listProviderModels(providerId: string): Promise<ModelInfo[]> {
+    const response = await fetch(`${this.serverUrl}/providers/${providerId}/models`)
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to fetch models')
+    }
+
+    return response.json()
+  }
+
+  // ========================================================================
   // Settings
   // ========================================================================
 
@@ -560,6 +682,59 @@ export class MarkusClient {
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || 'Failed to validate settings')
+    }
+
+    return response.json()
+  }
+
+  // ========================================================================
+  // RAG (Retrieval-Augmented Generation)
+  // ========================================================================
+
+  /**
+   * Performs semantic search across indexed workspace files.
+   */
+  async searchRAG(
+    conversationId: string,
+    query: string,
+    limit?: number
+  ): Promise<Array<{
+    filePath: string
+    content: string
+    score: number
+    startLine: number
+    endLine: number
+  }>> {
+    const response = await fetch(`${this.serverUrl}/rag/search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, conversationId, limit })
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to search RAG')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Gets RAG indexing status for a conversation.
+   */
+  async getRAGStatus(conversationId: string): Promise<{
+    indexing: boolean
+    totalFiles: number
+    indexedFiles: number
+    totalChunks: number
+    lastUpdated: number | null
+    error?: string
+  }> {
+    const response = await fetch(`${this.serverUrl}/rag/status/${conversationId}`)
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to get RAG status')
     }
 
     return response.json()

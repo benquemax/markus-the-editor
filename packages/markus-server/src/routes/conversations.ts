@@ -12,7 +12,9 @@
 import { Express, Request, Response } from 'express'
 import type { ConversationManager } from '../conversationManager'
 import type { CreateConversationRequest } from '../types'
-import { getAgentDefinition } from '../agentDefinitionStore'
+import { getAgentDefinition, resolveAgentDefinition } from '../agentDefinitionStore'
+import { listProvidersUnmasked } from '../providerStore'
+import { readSettings } from '../settings'
 
 /**
  * Sets up conversation routes on the Express app.
@@ -65,7 +67,7 @@ export function setupConversationRoutes(
     try {
       // Resolve agent definitions if agentIds provided
       if (body.agentIds && Array.isArray(body.agentIds) && body.agentIds.length > 0) {
-        const resolvedDefinitions = []
+        const rawDefinitions = []
         for (const agentId of body.agentIds) {
           const definition = await getAgentDefinition(agentId)
           if (!definition) {
@@ -74,8 +76,20 @@ export function setupConversationRoutes(
             })
             return
           }
-          resolvedDefinitions.push(definition)
+          rawDefinitions.push(definition)
         }
+
+        // Resolve endpoint/apiKey for each agent from provider or main settings
+        const providers = await listProvidersUnmasked()
+        const settings = await readSettings()
+        const mainLlm = {
+          endpoint: settings.llm.apiEndpoint,
+          apiKey: settings.llm.apiKey,
+          model: settings.llm.model
+        }
+        const resolvedDefinitions = rawDefinitions.map(d =>
+          resolveAgentDefinition(d, providers, mainLlm)
+        )
 
         const conversation = conversationManager.create({
           workspaceFolders: body.workspaceFolders,
