@@ -6,6 +6,84 @@
  */
 
 // ============================================================================
+// Agent Definition Types
+// ============================================================================
+
+/**
+ * An API-defined agent with instruction-driven behavior.
+ * Clients create these via REST, then select which agents to use per conversation.
+ */
+export interface AgentDefinition {
+  /** UUID, auto-generated */
+  id: string
+  /** Machine-readable name, e.g. "narrative-architect" */
+  slug: string
+  /** Human-readable name, e.g. "Narrative Architect" */
+  name: string
+  /** Core instructions defining agent identity and behavior */
+  roleDefinition: string
+  /** Guidance on when to engage this agent (for orchestration/routing) */
+  whenToUse: string
+  /** Short description */
+  description: string
+  /** Additional per-agent instructions */
+  customInstructions?: string
+  // LLM configuration
+  model: string
+  endpoint: string
+  apiKey?: string
+  maxTokens: number
+  temperature: number
+  timeout?: number
+  /** Which tools this agent can use (tool names). Omit for default set. */
+  tools?: string[]
+  // Metadata
+  createdAt: number
+  updatedAt: number
+}
+
+/**
+ * Request to create a new agent definition.
+ * All fields except id, createdAt, updatedAt.
+ */
+export interface CreateAgentDefinitionRequest {
+  slug: string
+  name: string
+  roleDefinition: string
+  whenToUse: string
+  description: string
+  customInstructions?: string
+  model: string
+  endpoint: string
+  apiKey?: string
+  maxTokens?: number
+  temperature?: number
+  timeout?: number
+  /** Which tools this agent can use (tool names). Omit for default set. */
+  tools?: string[]
+}
+
+/**
+ * Request to update an agent definition. All fields optional.
+ */
+export interface UpdateAgentDefinitionRequest {
+  slug?: string
+  name?: string
+  roleDefinition?: string
+  whenToUse?: string
+  description?: string
+  customInstructions?: string
+  model?: string
+  endpoint?: string
+  apiKey?: string
+  maxTokens?: number
+  temperature?: number
+  timeout?: number
+  /** Which tools this agent can use (tool names). Omit for default set. */
+  tools?: string[]
+}
+
+// ============================================================================
 // Conversation Types
 // ============================================================================
 
@@ -18,6 +96,8 @@ export interface ConversationInfo {
   filebarId: string
   createdAt: number
   title?: string
+  /** Agent definition IDs selected for this conversation */
+  agentIds?: string[]
 }
 
 /**
@@ -26,6 +106,8 @@ export interface ConversationInfo {
 export interface CreateConversationRequest {
   workspaceFolders: string[]
   filebarId?: string
+  /** Agent definition IDs to use for this conversation */
+  agentIds?: string[]
 }
 
 // ============================================================================

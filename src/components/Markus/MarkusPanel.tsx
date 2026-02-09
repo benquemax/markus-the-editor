@@ -18,6 +18,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Settings, AlertCircle, Loader2, WifiOff } from 'lucide-react'
 import { ConversationHeader } from './ConversationHeader'
+import { AgentSelector } from './AgentSelector'
 import MarkdownIt from 'markdown-it'
 
 // Initialize markdown parser
@@ -39,6 +40,7 @@ import {
   createMarkusClient,
   MarkusClient,
   MarkusConnection,
+  type AgentDefinition,
   type ConversationInfo,
   type MessageEvent,
   type BlockingToolUI,
@@ -95,6 +97,10 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
   // Multi-agent state (placeholder - will be added to server later)
   const [agentStatuses] = useState<AgentStatusInfo[]>([])
 
+  // Agent selection state — which API-defined agents to use for new conversations
+  const [agentDefinitions, setAgentDefinitions] = useState<AgentDefinition[]>([])
+  const [selectedAgentIds, setSelectedAgentIds] = useState<Set<string>>(new Set())
+
   // Thought loop state
   const [tasks, setTasks] = useState<Task[]>([])
   const [blockingUI, setBlockingUI] = useState<BlockingToolUI | null>(null)
@@ -139,6 +145,15 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
 
         const validation = await client.validateSettings()
         setIsConfigured(validation.valid)
+
+        // Fetch available agent definitions and pre-select all
+        try {
+          const agents = await client.listAgentDefinitions()
+          setAgentDefinitions(agents)
+          setSelectedAgentIds(new Set(agents.map(a => a.id)))
+        } catch {
+          // Agent API may not be available — that's fine
+        }
       } catch (err) {
         setServerConnected(false)
         setServerError(err instanceof Error ? err.message : 'Failed to connect to server')
@@ -160,8 +175,10 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
     const initConversation = async () => {
       try {
         // Create a new conversation for this workspace
+        const agentIds = selectedAgentIds.size > 0 ? Array.from(selectedAgentIds) : undefined
         const info = await clientRef.current!.createConversation({
-          workspaceFolders
+          workspaceFolders,
+          agentIds
         })
         setConversationInfo(info)
 
@@ -354,8 +371,10 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
     if (!clientRef.current) return
 
     try {
+      const agentIds = selectedAgentIds.size > 0 ? Array.from(selectedAgentIds) : undefined
       const info = await clientRef.current.createConversation({
-        workspaceFolders
+        workspaceFolders,
+        agentIds
       })
       setConversationInfo(info)
       setConversation({
@@ -372,7 +391,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create conversation')
     }
-  }, [workspaceFolders])
+  }, [workspaceFolders, selectedAgentIds])
 
   // Handle loading a conversation (placeholder - needs server endpoint)
   const handleLoadConversation = useCallback(async (conversationId: string) => {
@@ -387,6 +406,19 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
     connectionRef.current.cancel()
     setIsLoading(false)
     setStreamingContent('')
+  }, [])
+
+  // Toggle an agent in the selection set
+  const handleToggleAgent = useCallback((id: string) => {
+    setSelectedAgentIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
   }, [])
 
   // Handle opening settings (still uses Electron IPC)
@@ -513,6 +545,13 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
         onNewConversation={handleNewConversation}
         onLoadConversation={handleLoadConversation}
         onOpenSettings={handleOpenSettings}
+      />
+
+      {/* Agent Selection Strip */}
+      <AgentSelector
+        agents={agentDefinitions}
+        selectedIds={selectedAgentIds}
+        onToggle={handleToggleAgent}
       />
 
       {/* Task List Panel */}

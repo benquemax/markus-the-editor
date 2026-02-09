@@ -336,13 +336,27 @@ export function getRecentIterations(
 }
 
 /**
+ * Formats a tool call with its key argument for context summaries.
+ * Includes enough detail so the LLM knows WHAT was done, not just which tool.
+ * E.g. "read_file(path:AppDelegate.swift)" instead of just "read_file".
+ */
+function summarizeToolCall(tc: ToolCallLog): string {
+  const args = tc.arguments || {}
+  // Pick the most informative argument for each tool
+  const keyArg = args.path || args.query || args.message?.toString().substring(0, 50) || args.description
+  const argStr = keyArg ? `(${String(keyArg).substring(0, 80)})` : ''
+  const status = tc.status === 'error'
+    ? `FAILED: ${tc.result?.error || 'unknown'}`
+    : ''
+  return status ? `${tc.name}${argStr} [${status}]` : `${tc.name}${argStr}`
+}
+
+/**
  * Gets a summary of an iteration for context condensation.
+ * Includes tool names WITH key arguments so the LLM can see what was already done.
  */
 export function summarizeIteration(iteration: ThoughtIteration): string {
-  const toolNames = iteration.toolCalls
-    .filter(tc => tc.status === 'complete')
-    .map(tc => tc.name)
-    .join(', ')
+  const toolSummaries = iteration.toolCalls.map(summarizeToolCall)
 
   const endType = iteration.endState.type
   const endInfo = endType === 'blocking_tool'
@@ -351,7 +365,7 @@ export function summarizeIteration(iteration: ThoughtIteration): string {
       ? ` (error: ${(iteration.endState as { type: 'error'; message: string }).message})`
       : ''
 
-  return `Iteration ${iteration.index}: Used [${toolNames || 'none'}]${endInfo}`
+  return `Iteration ${iteration.index}: ${toolSummaries.join(', ') || 'no tools'}${endInfo}`
 }
 
 /**

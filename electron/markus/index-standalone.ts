@@ -31,12 +31,13 @@ export type {
 export type { EventTransport } from './transport/types'
 
 export type { LoopControllerOptions } from './thoughtLoop/loopController'
+export type { AgentPromptInfo } from './thoughtLoop/contextBuilder'
 
 // LLM client
 export { createLLMClient } from './llm'
 
 // Tool definitions and executor
-export { TOOL_DEFINITIONS, executeTool } from './tools'
+export { TOOL_DEFINITIONS, executeTool, buildOrchestratorTools } from './tools'
 
 // Thought loop - re-export everything from the index
 export {
@@ -105,4 +106,20 @@ export {
   getRAGSettings,
   isMultiAgentEnabled
 } from './settings'
+
+// Multi-agent system
+export {
+  initializeMultiAgentSystem,
+  initializeForConversation,
+  shutdownMultiAgentSystem,
+  shutdownConversation,
+  isInitialized as isMultiAgentInitialized,
+  isInitializedForConversation,
+  getConversationAgents
+} from './multiAgent'
+
+export type { AgentDefinition } from './multiAgent'
+
+// Tool presets for generic agents
+export { TOOL_PRESETS, DEFAULT_TOOLS } from './agents/generic'
 

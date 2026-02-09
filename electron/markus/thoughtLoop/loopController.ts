@@ -19,6 +19,8 @@ import { TOOL_DEFINITIONS, executeTool } from '../tools'
 import { loadTaskList, createTaskList } from '../tasks'
 import type {
   MarkusSettings,
+  ToolDefinition,
+  ToolResult,
   ToolContext
 } from '../types'
 import type { EventTransport } from '../transport/types'
@@ -45,7 +47,8 @@ import {
   buildContext,
   buildInitialContext,
   contextToLLMMessages,
-  createRequestContext
+  createRequestContext,
+  type AgentPromptInfo
 } from './contextBuilder'
 import type { BuiltContext } from './types'
 
@@ -201,7 +204,49 @@ function isSafeTool(toolName: string): boolean {
     'consult_style_agent',
     'consult_creative_agent'
   ]
-  return safeTools.includes(toolName)
+  if (safeTools.includes(toolName)) return true
+
+  // Dynamic sub-agent consultation is always safe (read-only delegation)
+  if (toolName.startsWith('consult_') && toolName.endsWith('_agent')) return true
+
+  return false
+}
+
+/**
+ * Checks if an error is a transient network issue that can be retried.
+ * Covers ECONNRESET, ETIMEDOUT, stream terminations, and fetch failures.
+ */
+function isTransientError(error: unknown): boolean {
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase()
+    if (msg.includes('terminated') || msg.includes('econnreset') ||
+        msg.includes('etimedout') || msg.includes('econnrefused') ||
+        msg.includes('stream timeout') || msg.includes('network') ||
+        msg.includes('fetch failed') || msg.includes('socket hang up')) {
+      return true
+    }
+    // Check nested cause (Node.js wraps network errors)
+    const cause = (error as Error & { cause?: Error }).cause
+    if (cause instanceof Error) {
+      const causeMsg = cause.message.toLowerCase()
+      if (causeMsg.includes('econnreset') || causeMsg.includes('etimedout') ||
+          causeMsg.includes('econnrefused')) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+/** Max retries for transient stream errors per iteration */
+const MAX_STREAM_RETRIES = 3
+
+/**
+ * Checks if a tool modifies the workspace (creates/edits/deletes files).
+ * Used to auto-switch from planning to execution mode.
+ */
+function isWriteTool(toolName: string): boolean {
+  return ['create_file', 'edit_file', 'create_directory', 'delete_file'].includes(toolName)
 }
 
 /**
@@ -232,13 +277,22 @@ export interface LoopControllerOptions {
   onEvent: ThoughtLoopEventHandler
   yoloMode: boolean
   abortSignal?: AbortSignal
+  /** Custom tool definitions for orchestrator mode (overrides global TOOL_DEFINITIONS) */
+  toolDefinitions?: ToolDefinition[]
+  /** Custom tool executor for orchestrator mode (overrides global executeTool) */
+  executeToolFn?: (name: string, args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>
+  /** Agent definitions for system prompt generation */
+  agentDefinitions?: AgentPromptInfo[]
 }
 
 export class LoopController {
   private state: LoopState = 'idle'
   private config = DEFAULT_LOOP_CONFIG
   private noToolRetries = 0
+  private consecutiveAllErrorIterations = 0
   private previousResponses: string[] = []
+  // Track tool call signatures to detect spinning (same tools called repeatedly)
+  private previousToolSignatures: string[] = []
 
   constructor(private options: LoopControllerOptions) {}
 
@@ -287,41 +341,100 @@ export class LoopController {
         taskList = createTaskList(log.id)
       }
 
-      // Build context algorithmically
+      // Build context algorithmically — pass custom tool definitions and agent info
+      // so the system prompt and tool schema reflect the orchestrator's restricted tool set
+      const contextCustomOpts = {
+        toolDefinitions: this.options.toolDefinitions,
+        agentDefinitions: this.options.agentDefinitions
+      }
+
       const context = log.iterations.length === 0 && log.userMessages.length === 1
         ? await buildInitialContext(
             log.userMessages[0].content,
             workspaceFolders,
             log.mode,
-            { tasks: taskList.tasks, updatedAt: taskList.updatedAt }
+            { tasks: taskList.tasks, updatedAt: taskList.updatedAt },
+            contextCustomOpts
           )
         : await buildContext(log, workspaceFolders, {
             mode: log.mode,
-            tasks: { tasks: taskList.tasks, updatedAt: taskList.updatedAt }
+            tasks: { tasks: taskList.tasks, updatedAt: taskList.updatedAt },
+            ...contextCustomOpts
           })
 
       const llmMessages = contextToLLMMessages(context)
 
-      // Stream LLM response
+      // Stream LLM response with retry for transient network errors.
+      // ECONNRESET, timeouts, and other transient failures are retried up to
+      // MAX_STREAM_RETRIES times with exponential backoff before giving up.
       const startedAt = Date.now()
       let fullContent = ''
+      let streamFailed = false
 
-      try {
-        for await (const chunk of client.chatStream(
-          llmMessages,
-          TOOL_DEFINITIONS,
-          abortSignal
-        )) {
-          if (chunk.type === 'content' && chunk.content) {
-            fullContent += chunk.content
-            onEvent({ type: 'llm_streaming', chunk: chunk.content })
+      for (let streamAttempt = 0; streamAttempt <= MAX_STREAM_RETRIES; streamAttempt++) {
+        try {
+          fullContent = '' // Reset on each attempt
+          for await (const chunk of client.chatStream(
+            llmMessages,
+            this.options.toolDefinitions ?? TOOL_DEFINITIONS,
+            abortSignal
+          )) {
+            if (chunk.type === 'content' && chunk.content) {
+              fullContent += chunk.content
+              onEvent({ type: 'llm_streaming', chunk: chunk.content })
+            }
           }
+          break // Success — exit retry loop
+        } catch (error) {
+          if (abortSignal?.aborted) {
+            return { stopCondition: 'user_cancelled', waitingForInput: false }
+          }
+
+          if (streamAttempt < MAX_STREAM_RETRIES && isTransientError(error)) {
+            const backoffMs = 1000 * Math.pow(2, streamAttempt) // 1s, 2s, 4s
+            console.warn(`[LoopController] Stream error (retry ${streamAttempt + 1}/${MAX_STREAM_RETRIES} in ${backoffMs}ms):`, (error as Error).message)
+            await new Promise(resolve => setTimeout(resolve, backoffMs))
+            continue
+          }
+
+          // Retries exhausted or non-transient error — save progress and stop cleanly
+          // instead of throwing, so the conversation state is preserved
+          const errorMsg = error instanceof Error ? error.message : String(error)
+          console.error(`[LoopController] Unrecoverable stream error after ${streamAttempt} retries: ${errorMsg}`)
+
+          const errorResponseData: LLMResponseData = {
+            rawContent: fullContent,
+            strippedContent: fullContent,
+            parsedToolCalls: [],
+            hasToolCalls: false,
+            model: settings.llm.model
+          }
+
+          const iterationData = this.createIteration(
+            iteration - 1,
+            log.mode,
+            context,
+            errorResponseData,
+            [],
+            startedAt,
+            Date.now(),
+            { type: 'error', message: `Connection lost: ${errorMsg}` }
+          )
+          addIteration(log, iterationData)
+          await saveLog(log)
+
+          onEvent({
+            type: 'error',
+            message: 'Connection to LLM was lost. Your progress has been saved — send another message to continue.'
+          })
+
+          streamFailed = true
+          break
         }
-      } catch (error) {
-        if (abortSignal?.aborted) {
-          return { stopCondition: 'user_cancelled', waitingForInput: false }
-        }
-        throw error
+      }
+
+      if (streamFailed) {
+        return { stopCondition: 'error', waitingForInput: false }
       }
 
       const llmCompletedAt = Date.now()
@@ -340,12 +453,23 @@ export class LoopController {
 
       onEvent({ type: 'llm_complete', response: responseData })
 
-      // Check for repetition
-      const normalizedResponse = strippedContent.toLowerCase().trim().substring(0, 200)
-      if (normalizedResponse && this.previousResponses.some(prev =>
-        prev.toLowerCase().trim().substring(0, 200) === normalizedResponse
-      )) {
-        console.log('[LoopController] Detected repetition')
+      // --- Repetition and spinning detection ---
+      // 1. Text-based: compare the first 500 chars of stripped content
+      const normalizedResponse = strippedContent.toLowerCase().trim().substring(0, 500)
+      const isTextRepetition = normalizedResponse.length > 0 && this.previousResponses.some(prev =>
+        prev.toLowerCase().trim().substring(0, 500) === normalizedResponse
+      )
+
+      // 2. Tool-signature-based: detect when the same set of tools is called 3+ times
+      const toolSignature = toolCalls.map(tc => tc.name).sort().join(',')
+      const recentSignatures = this.previousToolSignatures.slice(-3)
+      const isToolSpinning = toolSignature.length > 0 &&
+        recentSignatures.length >= 2 &&
+        recentSignatures.every(sig => sig === toolSignature)
+
+      if (isTextRepetition || isToolSpinning) {
+        const reason = isTextRepetition ? 'text repetition' : 'tool spinning'
+        console.log(`[LoopController] Detected ${reason} (tools: [${toolSignature}])`)
 
         const iterationData = this.createIteration(
           iteration - 1,
@@ -363,6 +487,7 @@ export class LoopController {
         return { stopCondition: 'repetition_detected', waitingForInput: false }
       }
       this.previousResponses.push(strippedContent)
+      this.previousToolSignatures.push(toolSignature)
 
       // Handle no tool calls
       if (toolCalls.length === 0) {
@@ -417,13 +542,44 @@ export class LoopController {
         toolCallLogs.push(toolCallLog)
         onEvent({ type: 'tool_started', toolCall: toolCallLog })
 
+        // When custom tool definitions are provided (orchestrator mode), reject
+        // tools that aren't in the set immediately — the LLM sometimes hallucinates
+        // tools from its training data. Skipping these avoids a hung approval flow
+        // since the client has no UI for approving arbitrary unknown tools.
+        if (this.options.toolDefinitions) {
+          const knownToolNames = new Set(this.options.toolDefinitions.map(t => t.name))
+          if (!knownToolNames.has(toolCallData.name)) {
+            toolCallLog.status = 'error'
+            toolCallLog.completedAt = Date.now()
+            toolCallLog.result = {
+              success: false,
+              error: `Unknown tool: "${toolCallData.name}". Available tools: ${Array.from(knownToolNames).join(', ')}`
+            }
+
+            const toolResult: ToolCallResult = {
+              success: false,
+              error: toolCallLog.result.error
+            }
+            onEvent({ type: 'tool_complete', toolCallId: toolCallLog.id, result: toolResult })
+            transport.sendToolComplete(log.id, toolCallLog.id, toolResult)
+            continue
+          }
+        }
+
         // Check if approval needed
         let shouldExecute = this.options.yoloMode || isThoughtLoopTool(toolCallData.name) || isSafeTool(toolCallData.name)
 
         if (!shouldExecute) {
-          // Send tool started event and wait for approval via transport
+          // Send tool started event and wait for approval via transport.
+          // If approval times out (e.g. client has no approval UI), the promise
+          // rejects — catch it and treat as rejected rather than crashing the loop.
           transport.sendToolStarted(log.id, toolCallLog)
-          shouldExecute = await transport.waitForToolApproval(log.id, toolCallLog.id)
+          try {
+            shouldExecute = await transport.waitForToolApproval(log.id, toolCallLog.id)
+          } catch (approvalError) {
+            console.warn(`[LoopController] Tool approval failed for ${toolCallData.name}:`, (approvalError as Error).message)
+            shouldExecute = false
+          }
         }
 
         if (shouldExecute) {
@@ -438,7 +594,8 @@ export class LoopController {
           }
 
           try {
-            const result = await executeTool(toolCallData.name, toolCallData.arguments, toolContext)
+            const executeToolFn = this.options.executeToolFn ?? executeTool
+            const result = await executeToolFn(toolCallData.name, toolCallData.arguments, toolContext)
 
             toolCallLog.status = result.success ? 'complete' : 'error'
             toolCallLog.completedAt = Date.now()
@@ -451,6 +608,13 @@ export class LoopController {
             // Cache file content for read_file
             if (toolCallData.name === 'read_file' && result.success && typeof result.result === 'string') {
               toolCallLog.cachedContent = result.result
+            }
+
+            // Auto-switch from planning to execution when write tools succeed.
+            // If the agent is creating/editing files, it's executing, not planning.
+            if (log.mode === 'planning' && isWriteTool(toolCallData.name) && result.success) {
+              log.mode = 'execution'
+              console.log(`[LoopController] Auto-switched to execution mode (triggered by ${toolCallData.name})`)
             }
 
             // Handle blocking UI
@@ -514,9 +678,23 @@ export class LoopController {
         transport.sendTasksUpdated(log.id, updatedTaskList.tasks)
       }
 
-      // Check if all tools were rejected
+      // Check if all tools were rejected by the user
       if (toolCallLogs.every(tc => tc.status === 'rejected')) {
         endState = { type: 'all_rejected' as const }
+      }
+
+      // Track consecutive iterations where ALL tool calls errored (e.g. unknown tools
+      // in orchestrator mode). Stop after 3 to prevent infinite loops where the LLM
+      // keeps hallucinating tools that don't exist.
+      if (toolCallLogs.length > 0 && toolCallLogs.every(tc => tc.status === 'error')) {
+        this.consecutiveAllErrorIterations++
+        console.log(`[LoopController] All tools errored (${this.consecutiveAllErrorIterations}/3 consecutive)`)
+
+        if (this.consecutiveAllErrorIterations >= 3) {
+          endState = { type: 'error', message: 'Stopped: model repeatedly called invalid tools' } as IterationEndState
+        }
+      } else {
+        this.consecutiveAllErrorIterations = 0
       }
 
       // Create iteration record
@@ -554,6 +732,10 @@ export class LoopController {
 
       if (endState.type === 'all_rejected') {
         return { stopCondition: 'all_rejected', waitingForInput: false }
+      }
+
+      if (endState.type === 'error') {
+        return { stopCondition: 'error', waitingForInput: false }
       }
 
       // Continue to next iteration

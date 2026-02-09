@@ -22,7 +22,9 @@ import {
   isInitialized as isMultiAgentInitialized,
   routeUserMessage
 } from './multiAgent'
-import { AgentType } from './agents/types'
+import { AgentType, AgentTask } from './agents/types'
+import { GenericAgent } from './agents/generic'
+import { v4 as uuidv4 } from 'uuid'
 import {
   loadTaskList,
   saveTaskList,
@@ -338,19 +340,19 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
       properties: {
         add: {
           type: 'array',
-          description: 'Tasks to add. Each task has a description and optional priority (higher = more important).'
+          description: 'Tasks to add, e.g. [{"description": "Do something", "priority": 5}]. Priority is optional (higher = more important).'
         },
         complete: {
           type: 'array',
-          description: 'Task IDs to mark as done'
+          description: 'Task IDs to mark as done, e.g. ["t1", "t3"]. Use IDs shown in parentheses in the task list.'
         },
         remove: {
           type: 'array',
-          description: 'Task IDs to remove from the list'
+          description: 'Task IDs to remove, e.g. ["t2"]. Use IDs shown in parentheses in the task list.'
         },
         update: {
           type: 'array',
-          description: 'Tasks to update. Each update has id and optional status/description.'
+          description: 'Tasks to update, e.g. [{"id": "t1", "status": "in_progress"}]. Status can be "pending", "in_progress", "blocked", or "done". Description is also updatable.'
         }
       }
     }
@@ -982,6 +984,9 @@ async function executeUpdateTasks(
     taskList = createTaskList(context.conversationId)
   }
 
+  // Track warnings for failed operations so the LLM gets feedback
+  const warnings: string[] = []
+
   // Process additions
   const toAdd = args.add as Array<{ description: string; priority?: number }> | undefined
   if (toAdd && Array.isArray(toAdd)) {
@@ -995,14 +1000,25 @@ async function executeUpdateTasks(
   // Process completions
   const toComplete = args.complete as string[] | undefined
   if (toComplete && Array.isArray(toComplete)) {
-    completeTasks(taskList, toComplete)
+    const completedCount = completeTasks(taskList, toComplete)
+    if (completedCount < toComplete.length) {
+      const validIds = taskList.tasks.map(t => t.id)
+      const invalidIds = toComplete.filter(id => !validIds.includes(id))
+      if (invalidIds.length > 0) {
+        warnings.push(`Could not complete: ${invalidIds.join(', ')} (not found). Valid IDs: ${validIds.join(', ')}`)
+      }
+    }
   }
 
   // Process removals
   const toRemove = args.remove as string[] | undefined
   if (toRemove && Array.isArray(toRemove)) {
     for (const taskId of toRemove) {
-      removeTask(taskList, taskId)
+      const removed = removeTask(taskList, taskId)
+      if (!removed) {
+        const validIds = taskList.tasks.map(t => t.id)
+        warnings.push(`Could not remove "${taskId}" (not found). Valid IDs: ${validIds.join(', ')}`)
+      }
     }
   }
 
@@ -1014,11 +1030,16 @@ async function executeUpdateTasks(
   }> | undefined
   if (toUpdate && Array.isArray(toUpdate)) {
     for (const update of toUpdate) {
+      let found = false
       if (update.status) {
-        updateTaskStatus(taskList, update.id, update.status)
+        found = updateTaskStatus(taskList, update.id, update.status) || found
       }
       if (update.description) {
-        updateTaskDescription(taskList, update.id, update.description)
+        found = updateTaskDescription(taskList, update.id, update.description) || found
+      }
+      if (!found) {
+        const validIds = taskList.tasks.map(t => t.id)
+        warnings.push(`Could not update "${update.id}" (not found). Valid IDs: ${validIds.join(', ')}`)
       }
     }
   }
@@ -1028,10 +1049,15 @@ async function executeUpdateTasks(
   console.log('[Markus] Task descriptions:', taskList.tasks.map(t => `[${t.status}] ${t.description}`))
   await saveTaskList(context.filebarId, taskList)
 
-  // Return the formatted task list for injection into the next prompt
+  // Return the formatted task list, with warnings appended so the LLM sees errors
+  let result = formatTaskListForPrompt(taskList)
+  if (warnings.length > 0) {
+    result += '\n\n⚠️ Warnings:\n' + warnings.map(w => `- ${w}`).join('\n')
+  }
+
   return {
     success: true,
-    result: formatTaskListForPrompt(taskList)
+    result
   }
 }
 
@@ -1089,6 +1115,176 @@ function executeRequestApproval(args: Record<string, unknown>): ToolResult {
       type: 'approval',
       summary,
       filesChanged: filesChanged || []
+    }
+  }
+}
+
+// ============================================================================
+// Orchestrator Tool Builder
+// ============================================================================
+
+/**
+ * Thought loop control tools that the orchestrator always has access to.
+ * These are a subset of TOOL_DEFINITIONS — the orchestrator communicates
+ * with the user and manages tasks, but does NOT directly touch files.
+ */
+const ORCHESTRATOR_CONTROL_TOOL_NAMES = [
+  'consult_boss',
+  'update_tasks',
+  'ask_user',
+  'request_task_approval'
+]
+
+/**
+ * Builds the orchestrator's tool set and custom executor.
+ *
+ * When sub-agents are defined, the orchestrator gets:
+ * 1. Thought loop control tools (consult_boss, update_tasks, etc.)
+ * 2. One `consult_<slug>_agent` tool per sub-agent (generated dynamically)
+ *
+ * The orchestrator does NOT get direct file tools — it delegates to sub-agents.
+ * This prevents context pollution: only text summaries from sub-agents enter
+ * the orchestrator's context window.
+ */
+export function buildOrchestratorTools(
+  subAgents: GenericAgent[]
+): {
+  definitions: ToolDefinition[]
+  executeTool: (name: string, args: Record<string, unknown>, ctx: ToolContext) => Promise<ToolResult>
+} {
+  // 1. Collect thought loop control tool definitions from the global set
+  const controlTools = TOOL_DEFINITIONS.filter(
+    def => ORCHESTRATOR_CONTROL_TOOL_NAMES.includes(def.name)
+  )
+
+  // 2. Generate a consult_<slug>_agent tool per sub-agent
+  const agentTools: ToolDefinition[] = subAgents.map(agent => ({
+    name: `consult_${agent.type}_agent`,
+    description: `Delegate a task to the ${agent.agentName} agent. ${agent.roleDefinition.substring(0, 200)}`,
+    parameters: {
+      type: 'object',
+      properties: {
+        task: {
+          type: 'string',
+          description: `Task description for the ${agent.agentName} agent. Include ALL relevant context — the agent cannot see your conversation history.`
+        },
+        context: {
+          type: 'string',
+          description: 'Additional context about what you are working on'
+        }
+      },
+      required: ['task']
+    }
+  }))
+
+  const definitions = [...controlTools, ...agentTools]
+
+  // 3. Build a slug → agent lookup for fast dispatch
+  const agentBySlug = new Map<string, GenericAgent>()
+  for (const agent of subAgents) {
+    agentBySlug.set(String(agent.type), agent)
+  }
+
+  // 4. Custom executor that routes to sub-agents or global executeTool
+  const orchestratorExecuteTool = async (
+    name: string,
+    args: Record<string, unknown>,
+    ctx: ToolContext
+  ): Promise<ToolResult> => {
+    // Thought loop control tools → delegate to global executeTool
+    if (ORCHESTRATOR_CONTROL_TOOL_NAMES.includes(name)) {
+      return executeTool(name, args, ctx)
+    }
+
+    // consult_<slug>_agent → dispatch to sub-agent
+    const agentMatch = name.match(/^consult_(.+)_agent$/)
+    if (agentMatch) {
+      const slug = agentMatch[1]
+      const agent = agentBySlug.get(slug)
+      if (!agent) {
+        return { success: false, error: `Unknown agent: ${slug}` }
+      }
+
+      return executeSubAgentTask(agent, args, ctx)
+    }
+
+    return { success: false, error: `Unknown orchestrator tool: ${name}` }
+  }
+
+  return { definitions, executeTool: orchestratorExecuteTool }
+}
+
+/**
+ * Runs a sub-agent task and returns a text summary for the orchestrator.
+ *
+ * Creates an AgentTask, calls processTask() which runs one LLM round
+ * with the sub-agent's own tools in its own context. Only the text
+ * result is returned to the orchestrator — no file contents or tool
+ * call details leak into the orchestrator's context.
+ */
+async function executeSubAgentTask(
+  agent: GenericAgent,
+  args: Record<string, unknown>,
+  ctx: ToolContext
+): Promise<ToolResult> {
+  const taskDescription = String(args.task || '')
+  const additionalContext = args.context ? String(args.context) : ''
+
+  if (!taskDescription) {
+    return { success: false, error: 'Task description is required' }
+  }
+
+  // Ensure agent is initialized (creates LLM client if needed)
+  if (!agent.getStatus || agent.getStatus() === 'idle') {
+    try {
+      agent.initialize()
+    } catch {
+      // Already initialized, continue
+    }
+  }
+
+  // Update workspace folders so path validation works
+  agent.setWorkspaceFolders(ctx.workspaceFolders)
+
+  // Build the agent task
+  const agentTask: AgentTask = {
+    id: uuidv4(),
+    description: taskDescription + (additionalContext ? `\n\nContext: ${additionalContext}` : ''),
+    agent: agent.type,
+    priority: 1,
+    status: 'pending',
+    context: {
+      workspaceFolders: ctx.workspaceFolders,
+      openFiles: ctx.openFiles
+    },
+    createdAt: Date.now()
+  }
+
+  try {
+    // processTask runs one LLM round with the agent's own tools
+    await agent.processTask(agentTask)
+
+    if (agentTask.status === 'failed') {
+      return {
+        success: false,
+        error: `${agent.agentName} agent failed: ${agentTask.error || 'Unknown error'}`
+      }
+    }
+
+    // Extract text result — only the summary enters orchestrator context
+    const result = agentTask.result
+    const resultText = typeof result === 'string'
+      ? result
+      : (result as { content?: string })?.content || JSON.stringify(result, null, 2)
+
+    return {
+      success: true,
+      result: `[${agent.agentName.toUpperCase()} AGENT RESPONSE]\n\n${resultText}`
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: `Failed to consult ${agent.agentName} agent: ${String(error)}`
     }
   }
 }

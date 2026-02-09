@@ -6,7 +6,7 @@
  */
 
 import { v4 as uuidv4 } from 'uuid'
-import type { ConversationInfo, CreateConversationRequest } from './types'
+import type { AgentDefinition, ConversationInfo, CreateConversationRequest } from './types'
 
 /**
  * In-memory storage for active conversations.
@@ -22,6 +22,8 @@ interface ConversationState {
   planningMode: boolean
   /** YOLO mode setting for this conversation */
   yoloMode: boolean
+  /** Resolved agent definitions for this conversation (from API-defined agents) */
+  agentDefinitions?: AgentDefinition[]
 }
 
 /**
@@ -59,7 +61,8 @@ export class ConversationManager {
       id,
       workspaceFolders: request.workspaceFolders,
       filebarId,
-      createdAt: now
+      createdAt: now,
+      agentIds: request.agentIds
     }
 
     this.conversations.set(id, {
@@ -202,5 +205,23 @@ export class ConversationManager {
       planningMode: state.planningMode,
       yoloMode: state.yoloMode
     }
+  }
+
+  /**
+   * Stores resolved agent definitions for a conversation.
+   * Called after resolving agentIds during conversation creation.
+   */
+  setAgentDefinitions(id: string, definitions: AgentDefinition[]): void {
+    const state = this.conversations.get(id)
+    if (state) {
+      state.agentDefinitions = definitions
+    }
+  }
+
+  /**
+   * Gets the resolved agent definitions for a conversation.
+   */
+  getAgentDefinitions(id: string): AgentDefinition[] | undefined {
+    return this.conversations.get(id)?.agentDefinitions
   }
 }

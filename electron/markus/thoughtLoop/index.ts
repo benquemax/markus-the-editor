@@ -84,6 +84,7 @@ export {
   contextToLLMMessages,
   createRequestContext
 } from './contextBuilder'
+export type { AgentPromptInfo } from './contextBuilder'
 
 // Re-export loop controller
 export {

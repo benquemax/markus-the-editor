@@ -44,3 +44,12 @@ export {
   validateEdit,
   applyEdit
 } from './editor'
+
+// Generic Agent (instruction-driven, for API-defined agents)
+export {
+  GenericAgent,
+  createGenericAgent,
+  TOOL_PRESETS,
+  DEFAULT_TOOLS,
+  type AgentDefinition
+} from './generic'

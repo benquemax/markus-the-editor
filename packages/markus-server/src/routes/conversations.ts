@@ -12,6 +12,7 @@
 import { Express, Request, Response } from 'express'
 import type { ConversationManager } from '../conversationManager'
 import type { CreateConversationRequest } from '../types'
+import { getAgentDefinition } from '../agentDefinitionStore'
 
 /**
  * Sets up conversation routes on the Express app.
@@ -33,7 +34,7 @@ export function setupConversationRoutes(
    * - filebarId: string
    * - createdAt: number
    */
-  app.post('/conversations', (req: Request, res: Response) => {
+  app.post('/conversations', async (req: Request, res: Response) => {
     const body = req.body as Partial<CreateConversationRequest>
 
     // Validate workspaceFolders
@@ -62,12 +63,38 @@ export function setupConversationRoutes(
     }
 
     try {
-      const conversation = conversationManager.create({
-        workspaceFolders: body.workspaceFolders,
-        filebarId: body.filebarId
-      })
+      // Resolve agent definitions if agentIds provided
+      if (body.agentIds && Array.isArray(body.agentIds) && body.agentIds.length > 0) {
+        const resolvedDefinitions = []
+        for (const agentId of body.agentIds) {
+          const definition = await getAgentDefinition(agentId)
+          if (!definition) {
+            res.status(400).json({
+              error: `Agent definition not found: ${agentId}`
+            })
+            return
+          }
+          resolvedDefinitions.push(definition)
+        }
 
-      res.status(201).json(conversation)
+        const conversation = conversationManager.create({
+          workspaceFolders: body.workspaceFolders,
+          filebarId: body.filebarId,
+          agentIds: body.agentIds
+        })
+
+        // Store the fully resolved definitions on the conversation
+        conversationManager.setAgentDefinitions(conversation.id, resolvedDefinitions)
+
+        res.status(201).json(conversation)
+      } else {
+        const conversation = conversationManager.create({
+          workspaceFolders: body.workspaceFolders,
+          filebarId: body.filebarId
+        })
+
+        res.status(201).json(conversation)
+      }
     } catch (error) {
       console.error('[Conversations] Error creating conversation:', error)
       res.status(500).json({ error: 'Failed to create conversation' })

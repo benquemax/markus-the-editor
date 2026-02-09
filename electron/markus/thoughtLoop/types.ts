@@ -9,7 +9,7 @@
  * algorithmically by cherry-picking relevant data.
  */
 
-import type { Task, BlockingToolUI } from '../types'
+import type { Task, BlockingToolUI, ToolDefinition } from '../types'
 
 // ============================================================================
 // Core Conversation Log Types
@@ -297,7 +297,7 @@ export interface LoopConfig {
 }
 
 export const DEFAULT_LOOP_CONFIG: LoopConfig = {
-  maxIterations: 100,
+  maxIterations: 30,
   maxNoToolRetries: 3
 }
 
@@ -319,6 +319,17 @@ export interface ContextBuildOptions {
 
   /** Whether to include full file contents or just summaries */
   fullFileContents?: boolean
+
+  /** Custom tool definitions for orchestrator mode (overrides global TOOL_DEFINITIONS) */
+  toolDefinitions?: ToolDefinition[]
+
+  /** Agent definitions for system prompt generation */
+  agentDefinitions?: Array<{
+    slug: string
+    name: string
+    description: string
+    whenToUse: string
+  }>
 }
 
 /**

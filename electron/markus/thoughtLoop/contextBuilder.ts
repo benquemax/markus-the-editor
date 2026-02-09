@@ -19,6 +19,7 @@
 
 import { generateToolSchema } from '../llm'
 import { TOOL_DEFINITIONS } from '../tools'
+import type { ToolDefinition } from '../types'
 import { getAllContext } from '../memory'
 import { formatTaskListForPrompt } from '../tasks'
 import type {
@@ -56,16 +57,30 @@ const RECENT_ITERATIONS_COUNT = 5
 /**
  * Builds the base system prompt with mode-specific instructions.
  */
+/**
+ * Agent info for dynamic system prompt generation.
+ * Used when conversations have API-defined agents instead of hardcoded ones.
+ */
+export interface AgentPromptInfo {
+  slug: string
+  name: string
+  description: string
+  whenToUse: string
+}
+
 export async function buildSystemPrompt(
   workspaceFolders: string[],
   mode: 'planning' | 'execution',
-  tasks: TaskState
+  tasks: TaskState,
+  agentDefinitions?: AgentPromptInfo[],
+  globalAgentInstructions?: string,
+  toolDefinitions?: ToolDefinition[]
 ): Promise<{ prompt: string; sources: ContextSource[] }> {
   const sources: ContextSource[] = []
 
   // Get memory context
   const context = await getAllContext(workspaceFolders)
-  const toolSchema = generateToolSchema(TOOL_DEFINITIONS)
+  const toolSchema = generateToolSchema(toolDefinitions ?? TOOL_DEFINITIONS)
 
   let systemPrompt = `You are Markus, an AI assistant integrated into a markdown editor.
 
@@ -91,6 +106,13 @@ export async function buildSystemPrompt(
 6. **read_file, edit_file, create_file, list_directory, search_files** - Do the work
 
 ## Current Mode: ${mode.toUpperCase()}
+
+## Workspace Folders
+
+These are the project directories you are working in:
+${workspaceFolders.map(f => `- \`${f}\``).join('\n')}
+
+All file paths MUST be absolute and within these folders. Use these paths directly — do NOT use relative paths like "." or "..".
 
 `
 
@@ -120,8 +142,32 @@ export async function buildSystemPrompt(
     charCount: modeInstructions.length
   })
 
-  // Add specialist agent info
-  systemPrompt += `## Your Specialist Agents
+  // Add specialist agent info — dynamic when API-defined agents are provided
+  if (agentDefinitions && agentDefinitions.length > 0) {
+    let agentSection = `## Your Specialist Agents
+
+You have the following agents available for delegation:
+
+`
+    for (const agent of agentDefinitions) {
+      agentSection += `- **${agent.name}** (\`consult_${agent.slug}_agent\`): ${agent.description}\n`
+      if (agent.whenToUse) {
+        agentSection += `  _When to use:_ ${agent.whenToUse}\n`
+      }
+    }
+
+    agentSection += `
+**IMPORTANT - Agent Context Rules:**
+1. Agents can ONLY see the task description you give them + the files in the workspace
+2. Agents CANNOT see your conversation history with the user
+3. You MUST include ALL relevant context in your task description
+4. Be explicit and detailed - agents work best with clear, complete context
+
+`
+    systemPrompt += agentSection
+  } else {
+    // Default hardcoded agents (backward-compatible)
+    systemPrompt += `## Your Specialist Agents
 
 You have a team of specialist agents you can delegate tasks to:
 
@@ -137,6 +183,18 @@ You have a team of specialist agents you can delegate tasks to:
 4. Be explicit and detailed - agents work best with clear, complete context
 
 `
+  }
+
+  // Add global agent instructions if configured
+  if (globalAgentInstructions) {
+    const globalSection = `## Global Agent Instructions\n\n${globalAgentInstructions}\n\n`
+    systemPrompt += globalSection
+    sources.push({
+      type: 'memory',
+      reference: 'global_agent_instructions',
+      charCount: globalSection.length
+    })
+  }
 
   // Add tool schema
   systemPrompt += toolSchema + '\n\n'
@@ -231,11 +289,14 @@ export async function buildContext(
   const sources: ContextSource[] = []
   const messages: LLMContextMessage[] = []
 
-  // Build system prompt
+  // Build system prompt — thread custom tool definitions and agent definitions
   const { prompt: systemPrompt, sources: promptSources } = await buildSystemPrompt(
     workspaceFolders,
     options.mode,
-    options.tasks
+    options.tasks,
+    options.agentDefinitions,
+    undefined, // globalAgentInstructions
+    options.toolDefinitions
   )
   sources.push(...promptSources)
 
@@ -314,9 +375,10 @@ export async function buildContext(
     })
   }
 
-  // Add iteration context based on mode
-  if (options.mode === 'execution' && log.iterations.length > 0) {
-    // In execution mode, include summaries of recent iterations
+  // Add iteration summaries so the LLM knows what it already did.
+  // Without this, each iteration starts with no memory of previous actions
+  // and the LLM repeats the same tool calls (reads the same files, etc.).
+  if (log.iterations.length > 0) {
     const recentIterations = getRecentIterations(log, RECENT_ITERATIONS_COUNT)
     const summaries = recentIterations.map(summarizeIteration).join('\n')
 
@@ -333,19 +395,26 @@ export async function buildContext(
     }
   }
 
-  // Add tool results from the most recent iteration if it didn't end in blocking
+  // Add tool results from the most recent iteration if it didn't end in blocking.
+  // Includes both successful results AND errors so the LLM can see what failed
+  // and adjust its approach instead of repeating the same invalid tool calls.
   if (log.iterations.length > 0) {
     const lastIteration = log.iterations[log.iterations.length - 1]
     if (lastIteration.endState.type === 'continue') {
-      const toolResults = lastIteration.toolCalls
-        .filter(tc => tc.status === 'complete' && tc.result)
-        .map(tc => {
+      const toolResultParts: string[] = []
+
+      for (const tc of lastIteration.toolCalls) {
+        if (tc.status === 'complete' && tc.result) {
           const resultStr = typeof tc.result?.data === 'string'
             ? tc.result.data
             : JSON.stringify(tc.result?.data)
-          return `Tool "${tc.name}":\n${resultStr}`
-        })
-        .join('\n\n---\n\n')
+          toolResultParts.push(`Tool "${tc.name}" (success):\n${resultStr}`)
+        } else if (tc.status === 'error' && tc.result?.error) {
+          toolResultParts.push(`Tool "${tc.name}" (ERROR):\n${tc.result.error}`)
+        }
+      }
+
+      const toolResults = toolResultParts.join('\n\n---\n\n')
 
       if (toolResults) {
         messages.push({
@@ -392,15 +461,19 @@ export async function buildInitialContext(
   userMessage: string,
   workspaceFolders: string[],
   mode: 'planning' | 'execution',
-  tasks: TaskState
+  tasks: TaskState,
+  options?: Pick<ContextBuildOptions, 'toolDefinitions' | 'agentDefinitions'>
 ): Promise<BuiltContext> {
   const sources: ContextSource[] = []
 
-  // Build system prompt
+  // Build system prompt — thread custom tool definitions and agent definitions
   const { prompt: systemPrompt, sources: promptSources } = await buildSystemPrompt(
     workspaceFolders,
     mode,
-    tasks
+    tasks,
+    options?.agentDefinitions,
+    undefined, // globalAgentInstructions
+    options?.toolDefinitions
   )
   sources.push(...promptSources)
 

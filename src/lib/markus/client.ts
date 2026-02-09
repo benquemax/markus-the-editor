@@ -15,11 +15,72 @@ export interface ConversationInfo {
   filebarId: string
   createdAt: number
   title?: string
+  agentIds?: string[]
 }
 
 export interface CreateConversationOptions {
   workspaceFolders: string[]
   filebarId?: string
+  /** Agent definition IDs to use for this conversation */
+  agentIds?: string[]
+}
+
+// ============================================================================
+// Agent Definition Types
+// ============================================================================
+
+export interface AgentDefinition {
+  id: string
+  slug: string
+  name: string
+  roleDefinition: string
+  whenToUse: string
+  description: string
+  customInstructions?: string
+  model: string
+  endpoint: string
+  apiKey?: string
+  maxTokens: number
+  temperature: number
+  timeout?: number
+  /** Which tools this agent can use (tool names). Omit for default set. */
+  tools?: string[]
+  createdAt: number
+  updatedAt: number
+}
+
+export interface CreateAgentDefinitionOptions {
+  slug: string
+  name: string
+  roleDefinition: string
+  whenToUse: string
+  description: string
+  customInstructions?: string
+  model: string
+  endpoint: string
+  apiKey?: string
+  maxTokens?: number
+  temperature?: number
+  timeout?: number
+  /** Which tools this agent can use (tool names). Omit for default set. */
+  tools?: string[]
+}
+
+export interface UpdateAgentDefinitionOptions {
+  slug?: string
+  name?: string
+  roleDefinition?: string
+  whenToUse?: string
+  description?: string
+  customInstructions?: string
+  model?: string
+  endpoint?: string
+  apiKey?: string
+  maxTokens?: number
+  temperature?: number
+  timeout?: number
+  /** Which tools this agent can use (tool names). Omit for default set. */
+  tools?: string[]
 }
 
 export interface MessageOptions {
@@ -352,6 +413,108 @@ export class MarkusClient {
    */
   connect(conversationId: string): MarkusConnection {
     return new MarkusConnection(this.serverUrl, conversationId)
+  }
+
+  // ========================================================================
+  // Agent Definitions
+  // ========================================================================
+
+  /**
+   * Creates a new agent definition.
+   */
+  async createAgentDefinition(options: CreateAgentDefinitionOptions): Promise<AgentDefinition> {
+    const response = await fetch(`${this.serverUrl}/agents`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options)
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to create agent definition')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Lists all agent definitions.
+   */
+  async listAgentDefinitions(): Promise<AgentDefinition[]> {
+    const response = await fetch(`${this.serverUrl}/agents`)
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to list agent definitions')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Gets a specific agent definition.
+   */
+  async getAgentDefinition(id: string): Promise<AgentDefinition> {
+    const response = await fetch(`${this.serverUrl}/agents/${id}`)
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Agent definition not found')
+      }
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to get agent definition')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Updates an agent definition.
+   */
+  async updateAgentDefinition(id: string, updates: UpdateAgentDefinitionOptions): Promise<AgentDefinition> {
+    const response = await fetch(`${this.serverUrl}/agents/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    })
+
+    if (!response.ok) {
+      if (response.status === 404) {
+        throw new Error('Agent definition not found')
+      }
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to update agent definition')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Gets available tool presets for agent configuration.
+   */
+  async getToolPresets(): Promise<{ presets: Record<string, string[]>; default: string[] }> {
+    const response = await fetch(`${this.serverUrl}/agents/tool-presets`)
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to get tool presets')
+    }
+
+    return response.json()
+  }
+
+  /**
+   * Deletes an agent definition.
+   */
+  async deleteAgentDefinition(id: string): Promise<void> {
+    const response = await fetch(`${this.serverUrl}/agents/${id}`, {
+      method: 'DELETE'
+    })
+
+    if (!response.ok && response.status !== 404) {
+      const error = await response.json()
+      throw new Error(error.error || 'Failed to delete agent definition')
+    }
   }
 
   // ========================================================================

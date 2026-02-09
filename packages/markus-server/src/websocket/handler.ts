@@ -21,9 +21,17 @@ import {
   runThoughtLoop,
   loadTaskList,
   createTaskList,
-  getFilebarId
+  getFilebarId,
+  isMultiAgentEnabled,
+  isMultiAgentInitialized,
+  initializeMultiAgentSystem,
+  initializeForConversation,
+  shutdownConversation,
+  isInitializedForConversation,
+  getConversationAgents,
+  buildOrchestratorTools
 } from '../core/index'
-import type { ConversationLog, ThoughtLoopEvent } from '../core/index'
+import type { ConversationLog, ThoughtLoopEvent, AgentPromptInfo } from '../core/index'
 
 /**
  * Active WebSocket connections per conversation.
@@ -96,6 +104,11 @@ export function setupWebSocketHandler(
         connections.delete(transport)
         if (connections.size === 0) {
           connectionsByConversation.delete(conversationId)
+
+          // Shutdown per-conversation agents when the last client disconnects
+          if (isInitializedForConversation(conversationId)) {
+            shutdownConversation(conversationId)
+          }
         }
       }
     })
@@ -219,6 +232,51 @@ async function handleChatMessage(
   const workspaceFolders = conversation.workspaceFolders
   const filebarId = getFilebarId(workspaceFolders)
 
+  // Lazy-initialize multi-agent system:
+  // 1. Per-conversation agents (from API-defined agent definitions) take priority
+  // 2. Falls back to global settings.yaml multi-agent config
+  const agentDefs = conversationManager.getAgentDefinitions(conversationId)
+  if (agentDefs && agentDefs.length > 0) {
+    if (!isInitializedForConversation(conversationId)) {
+      try {
+        await initializeForConversation(conversationId, agentDefs, settings as any, workspaceFolders)
+        console.log(`[WebSocket] Per-conversation agents initialized for ${conversationId}`)
+      } catch (error) {
+        console.warn(`[WebSocket] Failed to initialize per-conversation agents:`, error)
+      }
+    }
+  } else if (isMultiAgentEnabled(settings) && !isMultiAgentInitialized()) {
+    try {
+      await initializeMultiAgentSystem(settings as any, workspaceFolders)
+      console.log('[WebSocket] Multi-agent system initialized')
+    } catch (error) {
+      console.warn('[WebSocket] Failed to initialize multi-agent system:', error)
+    }
+  }
+
+  // Build orchestrator tool set when per-conversation agents are active.
+  // This restricts the thought loop to only the orchestrator's tools
+  // (consult_boss, update_tasks, ask_user, request_task_approval, consult_<slug>_agent)
+  // and prevents direct file access — all file work is delegated to sub-agents.
+  let customToolDefs: any[] | undefined
+  let customExecuteTool: any | undefined
+  let agentPromptInfo: AgentPromptInfo[] | undefined
+
+  if (agentDefs && agentDefs.length > 0 && isInitializedForConversation(conversationId)) {
+    const subAgents = getConversationAgents(conversationId)
+    if (subAgents.length > 0) {
+      const orchestratorTools = buildOrchestratorTools(subAgents)
+      customToolDefs = orchestratorTools.definitions
+      customExecuteTool = orchestratorTools.executeTool
+      agentPromptInfo = agentDefs.map(d => ({
+        slug: d.slug,
+        name: d.name,
+        description: d.description,
+        whenToUse: d.whenToUse
+      }))
+    }
+  }
+
   // Get or create conversation log
   let log = activeConversationLogs.get(conversationId)
   if (!log) {
@@ -291,7 +349,14 @@ async function handleChatMessage(
       waitForToolApproval: (_convId: string, toolCallId: string) => transport.waitForToolApproval(toolCallId)
     }
 
-    // Run thought loop
+    // In server mode, force yoloMode ON because the web client doesn't have a
+    // tool approval UI yet. Without this, write tools (create_file, edit_file,
+    // create_directory) would hang for 5 minutes waiting for approval that never
+    // comes. Tools are still sandboxed to workspace folders for safety.
+    // TODO: Remove this override when the web client gets a tool approval UI.
+    const effectiveYoloMode = true
+
+    // Run thought loop — pass custom orchestrator tools when agents are active
     const result = await runThoughtLoop({
       log,
       settings: settings as any, // Cast to avoid type mismatch
@@ -300,9 +365,18 @@ async function handleChatMessage(
       transport: transportAdapter as any,
       getOpenFiles: () => [], // No open files in server mode
       onEvent: handleEvent,
-      yoloMode,
-      abortSignal: abortController.signal
+      yoloMode: effectiveYoloMode,
+      abortSignal: abortController.signal,
+      toolDefinitions: customToolDefs,
+      executeToolFn: customExecuteTool,
+      agentDefinitions: agentPromptInfo
     })
+
+    // For blocking tools: mark as not processing FIRST, so the client
+    // can immediately send tool_response without hitting "already processing"
+    if (result.waitingForInput) {
+      conversationManager.finishProcessing(conversationId)
+    }
 
     // Save log
     await saveLog(log)
@@ -318,9 +392,22 @@ async function handleChatMessage(
 
   } catch (error) {
     console.error('[WebSocket] Error processing message:', error)
+
+    // Save the log to preserve progress even on unexpected errors,
+    // so the user can resume by sending another message
+    try {
+      await saveLog(log)
+    } catch (saveError) {
+      console.error('[WebSocket] Failed to save log after error:', saveError)
+    }
+
     transport.sendError(error instanceof Error ? error.message : 'Unknown error')
   } finally {
-    conversationManager.finishProcessing(conversationId)
+    // Only call finishProcessing if we didn't already call it above
+    // (for non-blocking completions, or if an error occurred before we could)
+    if (conversationManager.isProcessing(conversationId)) {
+      conversationManager.finishProcessing(conversationId)
+    }
   }
 }
 

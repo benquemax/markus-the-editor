@@ -2,8 +2,10 @@
  * Multi-Agent System Integration
  *
  * Main integration module that coordinates the multi-agent system.
- * Handles agent initialization, task routing, and communication with
- * the existing Markus IPC handlers.
+ * Supports two modes:
+ * 1. Global mode (settings.yaml) - Backward-compatible singleton with hardcoded agent types
+ * 2. Per-conversation mode (API-defined) - Each conversation gets its own agent set
+ *    with instruction-driven behavior from AgentDefinitions
  */
 
 import {
@@ -14,6 +16,7 @@ import {
   agentContextManager,
   AgentTask,
   AgentType,
+  AgentSettings,
   AgentStatusInfo
 } from './agents'
 import {
@@ -25,16 +28,20 @@ import { ResearchAgent, createResearchAgent } from './agents/research'
 import { CritiqueAgent, createCritiqueAgent } from './agents/critique'
 import { StyleAgent, createStyleAgent } from './agents/style'
 import { CreativeAgent, createCreativeAgent } from './agents/creative'
+import { GenericAgent, createGenericAgent, AgentDefinition } from './agents/generic'
 import { MarkusSettings } from './types'
 import { getAgentSettings, getRAGSettings, getConfigDir } from './settings'
 import { getIndexManager, resetIndexManager, IndexManager, IndexStatus } from './rag'
+
+// Re-export AgentDefinition for external consumers
+export type { AgentDefinition } from './agents/generic'
 
 // ============================================================================
 // Types
 // ============================================================================
 
 /**
- * Multi-agent system state.
+ * Multi-agent system state (used for both global and per-conversation).
  */
 interface MultiAgentState {
   /** Whether the system is initialized */
@@ -47,10 +54,12 @@ interface MultiAgentState {
   workspaceFolders: string[]
   /** Current settings */
   settings: MarkusSettings | null
+  /** GenericAgent instances for per-conversation mode */
+  agents?: GenericAgent[]
 }
 
 // ============================================================================
-// State
+// Global State (backward-compatible settings.yaml mode)
 // ============================================================================
 
 const state: MultiAgentState = {
@@ -62,11 +71,18 @@ const state: MultiAgentState = {
 }
 
 // ============================================================================
-// Initialization
+// Per-Conversation State (API-defined agent mode)
+// ============================================================================
+
+const conversationStates = new Map<string, MultiAgentState>()
+
+// ============================================================================
+// Global Initialization (settings.yaml)
 // ============================================================================
 
 /**
- * Initialize the multi-agent system.
+ * Initialize the multi-agent system from settings.yaml.
+ * This is the backward-compatible path using hardcoded agent types.
  */
 export async function initializeMultiAgentSystem(
   settings: MarkusSettings,
@@ -130,7 +146,7 @@ export async function initializeMultiAgentSystem(
 }
 
 /**
- * Create all agent instances.
+ * Create all hardcoded agent instances (settings.yaml path).
  */
 function createAllAgents(
   settings: MarkusSettings,
@@ -165,6 +181,137 @@ function createAllAgents(
   return agents
 }
 
+// ============================================================================
+// Per-Conversation Initialization (API-defined agents)
+// ============================================================================
+
+/**
+ * Initialize the multi-agent system for a specific conversation
+ * using API-defined agent definitions.
+ *
+ * Each conversation gets its own router, agents, and state —
+ * completely isolated from other conversations and the global state.
+ */
+export async function initializeForConversation(
+  conversationId: string,
+  agentDefinitions: AgentDefinition[],
+  settings: MarkusSettings,
+  workspaceFolders: string[]
+): Promise<void> {
+  if (conversationStates.has(conversationId)) {
+    console.log(`[MultiAgent] Conversation ${conversationId} already initialized`)
+    return
+  }
+
+  console.log(`[MultiAgent] Initializing per-conversation agents for ${conversationId}...`)
+
+  // Build router settings from the first agent's defaults
+  // (the router needs MultiAgentSettings, but for API-defined agents
+  // we just need a minimal defaults block)
+  const routerSettings = {
+    defaults: {
+      model: settings.llm.model,
+      endpoint: settings.llm.apiEndpoint,
+      apiKey: settings.llm.apiKey,
+      maxTokens: settings.llm.maxTokens || 4096,
+      temperature: settings.llm.temperature || 0.7
+    }
+  }
+
+  // Create a fresh router for this conversation (not the global singleton)
+  const router = new AgentRouter(routerSettings)
+
+  // Create generic agents from definitions
+  const agents: GenericAgent[] = []
+  for (const def of agentDefinitions) {
+    const agentSettings: AgentSettings = {
+      model: def.model,
+      endpoint: def.endpoint,
+      apiKey: def.apiKey,
+      maxTokens: def.maxTokens,
+      temperature: def.temperature,
+      timeout: def.timeout
+    }
+
+    const agent = createGenericAgent(
+      def.slug,
+      def.name,
+      def.roleDefinition,
+      def.customInstructions,
+      agentSettings,
+      workspaceFolders,
+      def.tools
+    )
+    agents.push(agent)
+    router.registerAgent(agent)
+  }
+
+  // Store per-conversation state (including agents for orchestrator tool building)
+  const convState: MultiAgentState = {
+    initialized: true,
+    router,
+    indexManager: null,
+    workspaceFolders,
+    settings,
+    agents
+  }
+
+  // Initialize RAG for this conversation if enabled
+  const ragSettings = getRAGSettings(settings)
+  if (ragSettings.enabled) {
+    const configDir = getConfigDir()
+    convState.indexManager = getIndexManager(ragSettings, configDir)
+    await convState.indexManager.initialize(workspaceFolders)
+
+    convState.indexManager.indexWorkspace().catch(err => {
+      console.error(`[MultiAgent] RAG indexing error (conv ${conversationId}):`, err)
+    })
+  }
+
+  conversationStates.set(conversationId, convState)
+  console.log(`[MultiAgent] Per-conversation agents initialized for ${conversationId} (${agents.length} agents)`)
+}
+
+/**
+ * Shutdown the multi-agent system for a specific conversation.
+ */
+export function shutdownConversation(conversationId: string): void {
+  const convState = conversationStates.get(conversationId)
+  if (!convState) return
+
+  if (convState.router) {
+    convState.router.shutdown()
+  }
+
+  if (convState.indexManager) {
+    convState.indexManager.save().catch(err => {
+      console.error(`[MultiAgent] Failed to save RAG index (conv ${conversationId}):`, err)
+    })
+  }
+
+  conversationStates.delete(conversationId)
+  console.log(`[MultiAgent] Conversation ${conversationId} shutdown`)
+}
+
+/**
+ * Check if a specific conversation has per-conversation agents initialized.
+ */
+export function isInitializedForConversation(conversationId: string): boolean {
+  return conversationStates.get(conversationId)?.initialized ?? false
+}
+
+/**
+ * Get the GenericAgent instances for a conversation.
+ * Returns empty array if conversation not initialized or has no agents.
+ */
+export function getConversationAgents(conversationId: string): GenericAgent[] {
+  return conversationStates.get(conversationId)?.agents ?? []
+}
+
+// ============================================================================
+// Global Shutdown
+// ============================================================================
+
 /**
  * Shutdown the multi-agent system.
  */
@@ -181,6 +328,11 @@ export function shutdownMultiAgentSystem(): void {
     })
     resetIndexManager()
     state.indexManager = null
+  }
+
+  // Also shutdown all per-conversation states
+  for (const [convId] of conversationStates) {
+    shutdownConversation(convId)
   }
 
   state.initialized = false

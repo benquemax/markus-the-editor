@@ -28,8 +28,11 @@ export class WebSocketTransport {
   private pendingResponses = new Map<string, PendingHandler>()
   private pendingApprovals = new Map<string, PendingHandler>()
 
-  // Timeout for blocking operations (5 minutes)
-  private readonly TIMEOUT_MS = 5 * 60 * 1000
+  // Timeout for blocking operations (2 minutes).
+  // Covers ask_user and request_task_approval which require client interaction.
+  // Tool approval should never reach here in server mode (yoloMode is forced on)
+  // but this timeout prevents indefinite hangs if it ever does.
+  private readonly TIMEOUT_MS = 2 * 60 * 1000
 
   constructor(
     private ws: WebSocket,

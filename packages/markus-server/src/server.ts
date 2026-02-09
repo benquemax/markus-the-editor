@@ -12,6 +12,7 @@ import { WebSocketServer } from 'ws'
 import { getConfig, ServerConfig } from './config'
 import { setupConversationRoutes } from './routes/conversations'
 import { setupSettingsRoutes } from './routes/settings'
+import { setupAgentRoutes } from './routes/agents'
 import { setupWebSocketHandler } from './websocket/handler'
 import { ConversationManager } from './conversationManager'
 
@@ -92,6 +93,7 @@ export function createMarkusServer(config?: Partial<ServerConfig>): MarkusServer
   // Setup routes
   setupConversationRoutes(app, conversationManager)
   setupSettingsRoutes(app)
+  setupAgentRoutes(app)
 
   // Setup WebSocket handler
   setupWebSocketHandler(wss, conversationManager)
