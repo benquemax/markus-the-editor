@@ -67,7 +67,7 @@ function cleanupTaskList(taskList: TaskList): void {
   }
 
   // Reassign short IDs if any have legacy UUID format
-  let needsReindex = cleanedTasks.some(t => !t.id.match(/^t\d+$/))
+  const needsReindex = cleanedTasks.some(t => !t.id.match(/^t\d+$/))
   if (needsReindex) {
     cleanedTasks.forEach((task, idx) => {
       task.id = `t${idx + 1}`

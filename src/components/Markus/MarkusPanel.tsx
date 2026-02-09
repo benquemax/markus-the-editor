@@ -293,7 +293,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
         setTasks(event.tasks)
         break
 
-      case 'complete':
+      case 'complete': {
         setIsLoading(false)
         // Use refs to get the latest state (avoiding stale closure)
         const finalContent = streamingContentRef.current
@@ -324,6 +324,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
         setPreviousIterations([])
         isUserScrolledUp.current = false
         break
+      }
 
       case 'error':
         setIsLoading(false)
