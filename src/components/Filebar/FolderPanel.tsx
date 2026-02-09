@@ -54,6 +54,8 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict 
     if (!isGitRepo) return
     try {
       const status = await window.electron.git.status()
+      // Handle null response when no file is open
+      if (!status) return
       setAheadCount(status.ahead)
       // Check if there are any uncommitted changes (modified, added, deleted files)
       setHasUncommittedChanges(status.files.length > 0)
