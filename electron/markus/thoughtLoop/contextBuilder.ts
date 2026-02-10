@@ -99,11 +99,19 @@ export async function buildSystemPrompt(
 ## Available Tools (in priority order)
 
 1. **consult_boss** - Show messages to user (ONLY way to communicate!)
-2. **update_tasks** - Add/complete/remove tasks (call first each turn to maintain focus)
-3. **ask_user** - Ask user with predefined options (PAUSES for input)
-4. **request_task_approval** - Submit completed work for approval (PAUSES)
-5. **consult_*_agent** - Get specialist input (non-blocking)
-6. **read_file, edit_file, create_file, list_directory, search_files** - Do the work
+2. **read_file, edit_file, create_file, list_directory, search_files** - Do the actual work
+3. **update_tasks** - Track progress (NOT for planning — see Task Rules below)
+4. **ask_user** - Ask user with predefined options (PAUSES for input)
+5. **request_task_approval** - Submit completed work for approval (PAUSES)
+6. **consult_*_agent** - Get specialist input (non-blocking)
+
+## Task Rules
+
+- Keep your task list SHORT — aim for 3-7 tasks max. Each task should represent a meaningful deliverable, not a micro-step.
+- Do NOT decompose tasks into sub-tasks. If a task is complex, just start working on it.
+- Do NOT create new tasks for work you've already done or are about to do in this iteration.
+- Spend most iterations doing actual work (reading/writing files), not reorganizing tasks.
+- When all tasks are done, call request_task_approval immediately.
 
 ## Current Mode: ${mode.toUpperCase()}
 
@@ -216,8 +224,8 @@ You have a team of specialist agents you can delegate tasks to:
     const noTasksPrompt = `## Tasks
 
 No tasks defined yet. When you receive a request:
-1. First, use update_tasks to create your task list
-2. Then work through the tasks systematically
+1. Use update_tasks to create 3-7 high-level tasks (NOT sub-tasks)
+2. Immediately start working on the first task
 3. Use consult_boss to communicate progress
 4. When done, call request_task_approval
 

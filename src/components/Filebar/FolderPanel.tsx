@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
-import { ChevronDown, ChevronRight, Folder, X, GitBranch, Upload, Save, Loader2, AlertCircle, RefreshCw } from 'lucide-react'
+import { ChevronDown, ChevronRight, Folder, X, GitBranch, Upload, Save, Loader2, AlertCircle, FilePlus, FolderPlus } from 'lucide-react'
 import { FileTree } from '../FileExplorer/FileTree'
 import { NewItemDialog } from '../FileExplorer/NewItemDialog'
 import { useFileExplorer } from '../FileExplorer/useFileExplorer'
@@ -257,12 +257,22 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict 
         <button
           onClick={(e) => {
             e.stopPropagation()
-            refresh()
+            handleNewFile(path)
           }}
-          className="p-0.5 hover:bg-accent rounded opacity-0 group-hover:opacity-100"
-          title="Refresh"
+          className="p-0.5 hover:bg-accent rounded"
+          title="New File"
         >
-          <RefreshCw className={cn("w-3.5 h-3.5 text-muted-foreground", isLoading && "animate-spin")} />
+          <FilePlus className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+        </button>
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            handleNewFolder(path)
+          }}
+          className="p-0.5 hover:bg-accent rounded"
+          title="New Folder"
+        >
+          <FolderPlus className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
         </button>
         <button
           onClick={(e) => {

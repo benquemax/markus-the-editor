@@ -1106,6 +1106,12 @@ async function executeUpdateTasks(
     result += '\n\n⚠️ Warnings:\n' + warnings.map(w => `- ${w}`).join('\n')
   }
 
+  // Nudge the agent away from creating more tasks when the list is already large
+  const openCount = taskList.tasks.filter(t => t.status !== 'done').length
+  if (openCount > 10) {
+    result += `\n\n⚠️ Task list has ${openCount} open items — stop adding tasks and focus on completing existing ones.`
+  }
+
   return {
     success: true,
     result
