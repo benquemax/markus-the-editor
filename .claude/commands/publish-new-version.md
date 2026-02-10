@@ -2,6 +2,16 @@
 
 You are being asked to publish a new version of Markus. Follow these steps carefully.
 
+## Step 0: Switch to Latest Main
+
+The release must be based on the `main` branch. The local environment is typically on a feature branch or `dev`, and the latest changes are often merged to `main` via pull request on GitHub. Always start by switching to `main` and pulling the latest:
+
+```bash
+git stash        # if you have uncommitted work
+git checkout main
+git pull origin main
+```
+
 ## Step 1: Analyze Changes Since Last Release
 
 Run the following to understand what has changed:
