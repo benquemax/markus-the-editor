@@ -136,7 +136,15 @@
       ],
       "category": "public.app-category.productivity",
       "icon": "resources/icons/icon.png",
-      "artifactName": "${productName}-${version}.${ext}"
+      "artifactName": "${productName}-${version}.${ext}",
+      "fileAssociations": [
+        {
+          "ext": ["md", "markdown"],
+          "name": "Markdown Document",
+          "role": "Editor",
+          "mimeType": "text/markdown"
+        }
+      ]
     },
     "win": {
       "target": "nsis",
