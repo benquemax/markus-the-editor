@@ -7,7 +7,7 @@
  */
 
 import { useState } from 'react'
-import { FolderOpen, RefreshCw, Loader2 } from 'lucide-react'
+import { FolderOpen, RefreshCw, Loader2, FilePlus, FolderPlus } from 'lucide-react'
 import { FileTree } from './FileTree'
 import { NewItemDialog } from './NewItemDialog'
 import { useFileExplorer } from './useFileExplorer'
@@ -129,14 +129,30 @@ export function FileExplorer({ rootPath, onOpenFolder, onOpenFile }: FileExplore
         </span>
         <div className="flex items-center gap-1">
           {rootPath && (
-            <button
-              onClick={refresh}
-              disabled={isLoading}
-              className="p-1 hover:bg-accent rounded"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
-            </button>
+            <>
+              <button
+                onClick={() => handleNewFile(rootPath)}
+                className="p-1 hover:bg-accent rounded"
+                title="New File"
+              >
+                <FilePlus className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+              </button>
+              <button
+                onClick={() => handleNewFolder(rootPath)}
+                className="p-1 hover:bg-accent rounded"
+                title="New Folder"
+              >
+                <FolderPlus className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
+              </button>
+              <button
+                onClick={refresh}
+                disabled={isLoading}
+                className="p-1 hover:bg-accent rounded"
+                title="Refresh"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
+              </button>
+            </>
           )}
         </div>
       </div>
