@@ -70,6 +70,10 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user'
   const isError = message.status === 'error'
 
+  // Strip "[User Response] " prefix — used internally by the thought loop
+  // but shouldn't be shown in the UI
+  const displayContent = message.content?.replace(/^\[User Response\]\s*/, '') || ''
+
   /**
    * Copies the message content to clipboard.
    */
@@ -114,18 +118,18 @@ export function ChatMessage({ message }: ChatMessageProps) {
       >
         {/* Main content bubble - only show for USER messages
             For assistant messages, content is invisible (only tool outputs shown) */}
-        {isUser && message.content?.trim() && (
+        {isUser && displayContent.trim() && (
           <div
             className={cn(
               'inline-block p-3 rounded-lg text-sm',
-              'bg-primary text-primary-foreground',
+              'bg-muted text-foreground',
               isError && 'bg-destructive/10 border border-destructive/30'
             )}
           >
             <div
-              className="prose prose-sm max-w-none prose-invert"
+              className="prose prose-sm max-w-none dark:prose-invert"
               dangerouslySetInnerHTML={{
-                __html: md.render(message.content)
+                __html: md.render(displayContent)
               }}
             />
           </div>
