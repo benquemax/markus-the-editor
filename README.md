@@ -2,6 +2,14 @@
 
 A local, cross-platform WYSIWYG markdown editor built with Electron, React, and ProseMirror.
 
+> **Research Preview** — Markus is an experimental project that tests the *Markdown First* programming paradigm. It explores how well software can be written and managed using repositories where markdown is the primary medium, and how the accuracy of language models can be increased by using specialized sub-agents.
+
+## Principles
+
+1. **Clean, short context benefits all LLMs.** Both small local models and large state-of-the-art models produce better results when the context they operate on is well-structured and concise.
+2. **Native markdown rendering is the key to successful project management.** When documents are rendered natively rather than treated as raw text, project planning, documentation, and collaboration become significantly more effective.
+3. **Agency should be implemented as an API.** Agent capabilities are exposed through an HTTP/WebSocket API so that any GUI — including Markus — can consume them without coupling to a specific frontend.
+
 ## Features
 
 - **WYSIWYG Editing**: Edit markdown visually with real-time formatting
@@ -30,6 +38,17 @@ brew install --cask markus
 ```bash
 yay -S markus-bin
 ```
+
+### Windows (Scoop)
+
+```powershell
+scoop bucket add markus https://github.com/benquemax/scoop-markus-the-editor
+scoop install markus
+```
+
+### Windows (Installer)
+
+Download the latest `.exe` installer from [GitHub Releases](https://github.com/benquemax/markus-the-editor/releases) and run it.
 
 ### Linux (AppImage)
 

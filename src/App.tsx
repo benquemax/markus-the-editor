@@ -12,6 +12,7 @@ import { MarkusPanel } from './components/Markus'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
 import { cn } from './lib/utils'
+import { useLayoutMode } from './lib/useLayoutMode'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -36,16 +37,27 @@ function App() {
   const [behindCount, setBehindCount] = useState(0)
   const [isPulling, setIsPulling] = useState(false)
   const [activeConflict, setActiveConflict] = useState<FileConflict | null>(null)
-  const [showFilebar, setShowFilebar] = useState(true)
+  const [showFilebar, setShowFilebar] = useState(false)
   const [folders, setFolders] = useState<FolderEntry[]>([])
   const [filebarWidth, setFilebarWidth] = useState(280)
   const [isResizing, setIsResizing] = useState(false)
-  const [showMarkusPanel, setShowMarkusPanel] = useState(true)
+  const [showMarkusPanel, setShowMarkusPanel] = useState(false)
   const [markusPanelWidth, setMarkusPanelWidth] = useState(() =>
     Math.floor(window.innerWidth * 0.25)
   )
   const [isResizingMarkus, setIsResizingMarkus] = useState(false)
+  const [filebarHeight, setFilebarHeight] = useState(200)
+  const [markusPanelHeight, setMarkusPanelHeight] = useState(() =>
+    Math.floor(window.innerHeight * 0.25)
+  )
+  const { isVertical } = useLayoutMode()
   const editorRef = useRef<FileViewerHandle>(null)
+
+  // Per-mode dimension helpers — vertical uses height, horizontal uses width
+  const filebarDimension = isVertical ? filebarHeight : filebarWidth
+  const setFilebarDimension = isVertical ? setFilebarHeight : setFilebarWidth
+  const markusDimension = isVertical ? markusPanelHeight : markusPanelWidth
+  const setMarkusDimension = isVertical ? setMarkusPanelHeight : setMarkusPanelWidth
 
   // Update tab content helper
   const updateTabContent = useCallback((tabId: string, newContent: string, markDirty = true) => {
@@ -222,17 +234,44 @@ function App() {
 
   // Load saved theme and filebar state
   useEffect(() => {
-    window.electron.store.get('theme').then((savedTheme: unknown) => {
-      if (savedTheme) setTheme(savedTheme as Theme)
-    })
-    window.electron.store.get('showFilebar').then((saved: unknown) => {
-      if (saved !== undefined && saved !== null) setShowFilebar(saved as boolean)
-    })
-    window.electron.store.get('filebarFolders').then((saved: unknown) => {
-      if (saved && Array.isArray(saved)) {
-        setFolders(saved as FolderEntry[])
+    const loadState = async () => {
+      // Check if the app was launched by opening a file (double-click, command-line).
+      // If so, skip restoring panel visibility — start with a clean editing view.
+      const launchedWithFile = await window.electron.store.get('_launchedWithFile')
+
+      window.electron.store.get('theme').then((savedTheme: unknown) => {
+        if (savedTheme) setTheme(savedTheme as Theme)
+      })
+
+      // Only restore panel visibility when launched normally (not via file open)
+      if (!launchedWithFile) {
+        window.electron.store.get('showFilebar').then((saved: unknown) => {
+          if (saved !== undefined && saved !== null) setShowFilebar(saved as boolean)
+        })
+        window.electron.store.get('showMarkusPanel').then((saved: unknown) => {
+          if (saved !== undefined && saved !== null) setShowMarkusPanel(saved as boolean)
+        })
       }
-    })
+
+      window.electron.store.get('filebarFolders').then((saved: unknown) => {
+        if (saved && Array.isArray(saved)) {
+          setFolders(saved as FolderEntry[])
+        }
+      })
+      window.electron.store.get('filebarWidth').then((saved: unknown) => {
+        if (typeof saved === 'number') setFilebarWidth(saved)
+      })
+      window.electron.store.get('filebarHeight').then((saved: unknown) => {
+        if (typeof saved === 'number') setFilebarHeight(saved)
+      })
+      window.electron.store.get('markusPanelWidth').then((saved: unknown) => {
+        if (typeof saved === 'number') setMarkusPanelWidth(saved)
+      })
+      window.electron.store.get('markusPanelHeight').then((saved: unknown) => {
+        if (typeof saved === 'number') setMarkusPanelHeight(saved)
+      })
+    }
+    loadState()
   }, [])
 
   // Save theme when changed
@@ -245,9 +284,31 @@ function App() {
     window.electron.store.set('showFilebar', showFilebar)
   }, [showFilebar])
 
+  // Save Markus panel state when changed
+  useEffect(() => {
+    window.electron.store.set('showMarkusPanel', showMarkusPanel)
+  }, [showMarkusPanel])
+
   useEffect(() => {
     window.electron.store.set('filebarFolders', folders)
   }, [folders])
+
+  // Save panel dimensions when changed
+  useEffect(() => {
+    window.electron.store.set('filebarWidth', filebarWidth)
+  }, [filebarWidth])
+
+  useEffect(() => {
+    window.electron.store.set('filebarHeight', filebarHeight)
+  }, [filebarHeight])
+
+  useEffect(() => {
+    window.electron.store.set('markusPanelWidth', markusPanelWidth)
+  }, [markusPanelWidth])
+
+  useEffect(() => {
+    window.electron.store.set('markusPanelHeight', markusPanelHeight)
+  }, [markusPanelHeight])
 
   /**
    * Adds a folder to the filebar, checking if it's inside a git repo.
@@ -696,20 +757,29 @@ function App() {
         onTabClick={switchToTab}
         onTabClose={closeTab}
         onNewTab={createNewTab}
+        showFilebar={showFilebar}
+        onToggleFilebar={() => setShowFilebar(v => !v)}
+        showMarkusPanel={showMarkusPanel}
+        onToggleMarkusPanel={() => setShowMarkusPanel(v => !v)}
+        isVertical={isVertical}
       />
 
-      <main className="flex-1 flex overflow-hidden">
+      <main className={cn("flex-1 flex overflow-hidden", isVertical && "flex-col")}>
         {/* Filebar with multiple folder panels */}
         {showFilebar && (
           <>
             <div
-              className="flex flex-col border-r border-border flex-shrink-0 overflow-hidden"
-              style={{ width: filebarWidth }}
+              className={cn(
+                "flex flex-col flex-shrink-0 overflow-hidden",
+                isVertical ? "border-b border-border" : "border-r border-border"
+              )}
+              style={isVertical ? { height: filebarDimension } : { width: filebarDimension }}
             >
               <Filebar
                 folders={folders}
                 onFoldersChange={setFolders}
                 onOpenFile={handleOpenFileFromExplorer}
+                activeFilePath={filePath}
                 onConflict={(conflictContent) => {
                   const conflict = parseConflicts(conflictContent, filePath || '')
                   if (conflict.sections.length > 0) {
@@ -721,18 +791,21 @@ function App() {
             {/* Resize handle */}
             <div
               className={cn(
-                "w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors",
+                "hover:bg-primary/50 active:bg-primary transition-colors",
+                isVertical ? "h-1 cursor-row-resize" : "w-1 cursor-col-resize",
                 isResizing && "bg-primary"
               )}
               onMouseDown={(e) => {
                 e.preventDefault()
                 setIsResizing(true)
-                const startX = e.clientX
-                const startWidth = filebarWidth
+                const startPos = isVertical ? e.clientY : e.clientX
+                const startSize = filebarDimension
 
                 const handleMouseMove = (e: MouseEvent) => {
-                  const newWidth = Math.max(150, Math.min(500, startWidth + e.clientX - startX))
-                  setFilebarWidth(newWidth)
+                  const currentPos = isVertical ? e.clientY : e.clientX
+                  const [min, max] = isVertical ? [100, 400] : [150, 500]
+                  const newSize = Math.max(min, Math.min(max, startSize + currentPos - startPos))
+                  setFilebarDimension(newSize)
                 }
 
                 const handleMouseUp = () => {
@@ -779,19 +852,22 @@ function App() {
             {/* Resize handle */}
             <div
               className={cn(
-                "w-1 cursor-col-resize hover:bg-primary/50 active:bg-primary transition-colors",
+                "hover:bg-primary/50 active:bg-primary transition-colors",
+                isVertical ? "h-1 cursor-row-resize" : "w-1 cursor-col-resize",
                 isResizingMarkus && "bg-primary"
               )}
               onMouseDown={(e) => {
                 e.preventDefault()
                 setIsResizingMarkus(true)
-                const startX = e.clientX
-                const startWidth = markusPanelWidth
+                const startPos = isVertical ? e.clientY : e.clientX
+                const startSize = markusDimension
 
                 const handleMouseMove = (e: MouseEvent) => {
-                  // Markus panel resizes from the left edge, so subtract delta
-                  const newWidth = Math.max(250, Math.min(600, startWidth - (e.clientX - startX)))
-                  setMarkusPanelWidth(newWidth)
+                  // Markus panel resizes from the top/left edge, so subtract delta
+                  const currentPos = isVertical ? e.clientY : e.clientX
+                  const [min, max] = isVertical ? [150, 500] : [250, 600]
+                  const newSize = Math.max(min, Math.min(max, startSize - (currentPos - startPos)))
+                  setMarkusDimension(newSize)
                 }
 
                 const handleMouseUp = () => {
@@ -805,8 +881,11 @@ function App() {
               }}
             />
             <div
-              className="flex flex-col border-l border-border flex-shrink-0 overflow-hidden"
-              style={{ width: markusPanelWidth }}
+              className={cn(
+                "flex flex-col flex-shrink-0 overflow-hidden",
+                isVertical ? "border-t border-border" : "border-l border-border"
+              )}
+              style={isVertical ? { height: markusDimension } : { width: markusDimension }}
             >
               <MarkusPanel
                 workspaceFolders={workspaceFolders}

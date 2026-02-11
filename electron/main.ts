@@ -15,6 +15,10 @@ import Store from 'electron-store'
 // Disable GPU acceleration if it causes issues on some Linux systems
 app.disableHardwareAcceleration()
 
+// Stores the file path from macOS open-file events that fire before the window exists.
+// This is read in the app.whenReady() handler to open the file after the renderer is ready.
+let pendingFilePath: string | null = null
+
 const store = new Store({
   defaults: {
     recentFiles: [] as string[],
@@ -481,11 +485,15 @@ app.whenReady().then(async () => {
     // Continue anyway — the UI will show a "server not connected" state
   }
 
+  // Resolve initial file from either macOS open-file event or command-line args (Linux/Windows)
+  const initialFilePath = pendingFilePath || getFilePathFromArgs(process.argv)
+
+  // Signal to renderer whether the app was launched with a file, so it can
+  // skip restoring panel visibility and show a clean editing view instead
+  store.set('_launchedWithFile', !!initialFilePath)
+
   createWindow()
 
-  // Handle file opened from command line on Linux (file manager, terminal, etc.)
-  // On macOS, this is handled by the 'open-file' event instead
-  const initialFilePath = getFilePathFromArgs(process.argv)
   if (initialFilePath && mainWindow) {
     // Wait for window to be ready to receive IPC messages before opening file
     mainWindow.once('ready-to-show', () => {
@@ -521,13 +529,15 @@ function getFilePathFromArgs(args: string[]): string | undefined {
   })
 }
 
-// Handle file opened via file association on macOS (uses open-file event)
+// Handle file opened via file association on macOS (uses open-file event).
+// On cold launch, the event fires before the window exists — store the path
+// so app.whenReady() can open it after the renderer is ready.
 app.on('open-file', async (event, filePath) => {
   event.preventDefault()
   if (mainWindow) {
     await openFile(filePath)
   } else {
-    app.whenReady().then(() => openFile(filePath))
+    pendingFilePath = filePath
   }
 })
 

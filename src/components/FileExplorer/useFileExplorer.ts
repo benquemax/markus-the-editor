@@ -10,6 +10,7 @@ import {
   FileTreeNode,
   GitStatus,
   updateNodeInTree,
+  findNodeByPath,
   applyGitStatusToTree,
   sortNodes
 } from '../../lib/fileTree'
@@ -23,6 +24,7 @@ interface FileEntry {
 interface UseFileExplorerOptions {
   rootPath: string | null
   onOpenFile?: (filePath: string) => void
+  activeFilePath?: string | null
 }
 
 interface UseFileExplorerReturn {
@@ -36,7 +38,7 @@ interface UseFileExplorerReturn {
   openSelectedFile: () => void
 }
 
-export function useFileExplorer({ rootPath, onOpenFile }: UseFileExplorerOptions): UseFileExplorerReturn {
+export function useFileExplorer({ rootPath, onOpenFile, activeFilePath }: UseFileExplorerOptions): UseFileExplorerReturn {
   const [tree, setTree] = useState<FileTreeNode[]>([])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -178,6 +180,77 @@ export function useFileExplorer({ rootPath, onOpenFile }: UseFileExplorerOptions
   }, [loadDirectory])
 
   /**
+   * Reveals a file in the tree by expanding all ancestor directories
+   * and selecting the file. Uses the current tree state to avoid
+   * re-loading directories that are already expanded.
+   */
+  const revealFile = useCallback(async (filePath: string) => {
+    if (!rootPath || !filePath.startsWith(rootPath + '/')) return
+
+    // Build the chain of ancestor directory paths from root to the file's parent
+    const relativePath = filePath.slice(rootPath.length + 1)
+    const segments = relativePath.split('/')
+    const ancestorPaths: string[] = []
+    let current = rootPath
+    // All segments except the last one (which is the file itself)
+    for (let i = 0; i < segments.length - 1; i++) {
+      current = current + '/' + segments[i]
+      ancestorPaths.push(current)
+    }
+
+    // Expand each ancestor directory sequentially, lazy-loading as needed.
+    // We read the latest tree from the state setter to avoid stale closures.
+    for (const dirPath of ancestorPaths) {
+      // Use a promise + setState callback to read the current tree state
+      const needsLoad = await new Promise<boolean>((resolve) => {
+        setTree(prev => {
+          const node = findNodeByPath(prev, dirPath)
+          if (!node || node.type !== 'directory') {
+            resolve(false)
+            return prev
+          }
+          if (node.isExpanded && node.children) {
+            // Already expanded and loaded — nothing to do
+            resolve(false)
+            return prev
+          }
+          if (node.children && !node.isExpanded) {
+            // Children loaded but collapsed — just expand
+            resolve(false)
+            return updateNodeInTree(prev, dirPath, n => ({ ...n, isExpanded: true }))
+          }
+          // Children not loaded — need async load
+          resolve(true)
+          return updateNodeInTree(prev, dirPath, n => ({ ...n, isLoading: true }))
+        })
+      })
+
+      if (needsLoad) {
+        try {
+          const children = await loadDirectory(dirPath)
+          const sortedChildren = sortNodes(children)
+          const childrenWithStatus = applyGitStatusToTree(sortedChildren, gitStatusMapRef.current)
+
+          setTree(prev => updateNodeInTree(prev, dirPath, n => ({
+            ...n,
+            isLoading: false,
+            isExpanded: true,
+            children: childrenWithStatus
+          })))
+        } catch {
+          setTree(prev => updateNodeInTree(prev, dirPath, n => ({
+            ...n,
+            isLoading: false
+          })))
+          return // Stop revealing if a directory fails to load
+        }
+      }
+    }
+
+    setSelectedPath(filePath)
+  }, [rootPath, loadDirectory])
+
+  /**
    * Selects a node in the tree.
    */
   const selectNode = useCallback((node: FileTreeNode) => {
@@ -212,6 +285,14 @@ export function useFileExplorer({ rootPath, onOpenFile }: UseFileExplorerOptions
 
     return unsubscribe
   }, [refresh])
+
+  // Reveal the active file in the tree when it changes.
+  // Only triggers for files within this folder panel's root path.
+  useEffect(() => {
+    if (activeFilePath && rootPath && activeFilePath.startsWith(rootPath + '/')) {
+      revealFile(activeFilePath)
+    }
+  }, [activeFilePath, rootPath, revealFile])
 
   return {
     tree,
