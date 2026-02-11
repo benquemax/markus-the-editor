@@ -20,6 +20,7 @@ interface FolderPanelProps {
   onOpenFile: (filePath: string) => void
   onRemove: () => void
   onConflict: (content: string) => void
+  activeFilePath?: string | null
 }
 
 /**
@@ -30,7 +31,7 @@ function getFolderName(folderPath: string): string {
   return parts[parts.length - 1] || folderPath
 }
 
-export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict }: FolderPanelProps) {
+export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict, activeFilePath }: FolderPanelProps) {
   const [isExpanded, setIsExpanded] = useState(true)
   const [newItemDialog, setNewItemDialog] = useState<{
     isOpen: boolean
@@ -89,7 +90,8 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict 
     toggleExpand
   } = useFileExplorer({
     rootPath: path,
-    onOpenFile: handleOpenFile
+    onOpenFile: handleOpenFile,
+    activeFilePath
   })
 
   const handleSelect = useCallback((node: FileTreeNode) => {

@@ -83,19 +83,23 @@ Once the tag is pushed, GitHub Actions (`.github/workflows/release.yml`) automat
 
 1. Builds AppImage on Linux runner
 2. Builds DMG on macOS runner
-3. Creates GitHub Release with both artifacts
-4. Updates Homebrew tap (`benquemax/homebrew-markus-the-editor`)
-5. Updates AUR package (`markus-bin`)
+3. Builds NSIS installer on Windows runner
+4. Creates GitHub Release with all platform artifacts
+5. Updates Homebrew tap (`benquemax/homebrew-markus-the-editor`)
+6. Updates AUR package (`markus-bin`)
+7. Updates Scoop bucket (`benquemax/scoop-markus-the-editor`)
 
 Required repository secrets:
 - `HOMEBREW_TAP_TOKEN` - GitHub PAT with repo access to homebrew-markus-the-editor
 - `AUR_SSH_PRIVATE_KEY` - SSH private key registered with AUR
+- `SCOOP_BUCKET_TOKEN` - GitHub PAT with repo access to scoop-markus-the-editor
 
 ### Distribution Channels
 
 - **GitHub Releases**: https://github.com/benquemax/markus-the-editor/releases
 - **Homebrew (macOS)**: `brew tap benquemax/markus-the-editor && brew install --cask markus`
 - **AUR (Arch Linux)**: `yay -S markus-bin`
+- **Scoop (Windows)**: `scoop bucket add markus https://github.com/benquemax/scoop-markus-the-editor && scoop install markus`
 
 ### AUR Package
 

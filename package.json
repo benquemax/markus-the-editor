@@ -151,7 +151,16 @@
     },
     "win": {
       "target": "nsis",
-      "icon": "resources/icons/icon.ico"
+      "icon": "resources/icons/icon.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "fileAssociations": [
+        {
+          "ext": ["md", "markdown"],
+          "name": "Markdown Document",
+          "description": "Markdown Document",
+          "icon": "resources/icons/icon.ico"
+        }
+      ]
     }
   }
 }

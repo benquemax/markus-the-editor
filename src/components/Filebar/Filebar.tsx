@@ -29,9 +29,10 @@ interface FilebarProps {
   onFoldersChange: (folders: FolderEntry[]) => void
   onOpenFile: (filePath: string) => void
   onConflict: (content: string) => void
+  activeFilePath?: string | null
 }
 
-export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict }: FilebarProps) {
+export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, activeFilePath }: FilebarProps) {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [showLoadDialog, setShowLoadDialog] = useState(false)
   const [recentFilebars, setRecentFilebars] = useState<FilebarListItem[]>([])
@@ -257,6 +258,7 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict }: Fi
                   onOpenFile={onOpenFile}
                   onRemove={() => handleRemoveFolder(folder.path)}
                   onConflict={onConflict}
+                  activeFilePath={activeFilePath}
                 />
               ))}
             </div>
