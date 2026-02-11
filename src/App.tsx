@@ -757,11 +757,6 @@ function App() {
         onTabClick={switchToTab}
         onTabClose={closeTab}
         onNewTab={createNewTab}
-        showFilebar={showFilebar}
-        onToggleFilebar={() => setShowFilebar(v => !v)}
-        showMarkusPanel={showMarkusPanel}
-        onToggleMarkusPanel={() => setShowMarkusPanel(v => !v)}
-        isVertical={isVertical}
       />
 
       <main className={cn("flex-1 flex overflow-hidden", isVertical && "flex-col")}>

@@ -12,6 +12,10 @@ import { setupMarkusHandlers } from './markus/handlers'
 import { startEmbeddedServer, stopEmbeddedServer, getServerPort } from './markus/embeddedServer'
 import Store from 'electron-store'
 
+// Set the application name explicitly so that the dock/taskbar and window
+// title show "Markus" instead of the default "Electron".
+app.name = 'Markus'
+
 // Disable GPU acceleration if it causes issues on some Linux systems
 app.disableHardwareAcceleration()
 
@@ -75,6 +79,7 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: bounds.width,
     height: bounds.height,
+    icon: path.join(__dirname, '..', 'resources', 'icons', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
