@@ -2,7 +2,7 @@
  * Markus Conversation Manager
  *
  * Handles persistence of chat conversations. Conversations are stored
- * per-filebar in the config directory to keep related chats together.
+ * per-workspace in the config directory to keep related chats together.
  */
 
 import path from 'path'
@@ -13,17 +13,17 @@ import { Conversation, ChatMessage, ConversationListItem } from './types'
 import { getConfigDir } from './settings'
 
 /**
- * Gets the conversations directory for a specific filebar.
+ * Gets the conversations directory for a specific workspace.
  */
-function getConversationsDir(filebarId: string): string {
-  return path.join(getConfigDir(), 'filebars', filebarId, 'conversations')
+function getConversationsDir(workspaceId: string): string {
+  return path.join(getConfigDir(), 'workspaces', workspaceId, 'conversations')
 }
 
 /**
  * Ensures the conversations directory exists.
  */
-async function ensureConversationsDir(filebarId: string): Promise<string> {
-  const dir = getConversationsDir(filebarId)
+async function ensureConversationsDir(workspaceId: string): Promise<string> {
+  const dir = getConversationsDir(workspaceId)
   await fs.mkdir(dir, { recursive: true })
   return dir
 }
@@ -49,12 +49,12 @@ function generateTitle(messages: ChatMessage[]): string {
 /**
  * Creates a new conversation.
  */
-export async function createConversation(filebarId: string): Promise<Conversation> {
+export async function createConversation(workspaceId: string): Promise<Conversation> {
   const now = Date.now()
   const conversation: Conversation = {
     id: uuidv4(),
     title: 'New Conversation',
-    filebarId,
+    workspaceId,
     messages: [],
     createdAt: now,
     updatedAt: now
@@ -68,7 +68,7 @@ export async function createConversation(filebarId: string): Promise<Conversatio
  * Saves a conversation to disk.
  */
 export async function saveConversation(conversation: Conversation): Promise<void> {
-  const dir = await ensureConversationsDir(conversation.filebarId)
+  const dir = await ensureConversationsDir(conversation.workspaceId)
   const filePath = path.join(dir, `${conversation.id}.json`)
 
   // Update title if needed
@@ -85,10 +85,10 @@ export async function saveConversation(conversation: Conversation): Promise<void
  * Loads a conversation by ID.
  */
 export async function loadConversation(
-  filebarId: string,
+  workspaceId: string,
   conversationId: string
 ): Promise<Conversation | null> {
-  const dir = getConversationsDir(filebarId)
+  const dir = getConversationsDir(workspaceId)
   const filePath = path.join(dir, `${conversationId}.json`)
 
   if (!existsSync(filePath)) {
@@ -105,10 +105,10 @@ export async function loadConversation(
 }
 
 /**
- * Loads the most recent conversation for a filebar.
+ * Loads the most recent conversation for a workspace.
  */
-export async function loadLatestConversation(filebarId: string): Promise<Conversation | null> {
-  const conversations = await listConversations(filebarId)
+export async function loadLatestConversation(workspaceId: string): Promise<Conversation | null> {
+  const conversations = await listConversations(workspaceId)
 
   if (conversations.length === 0) {
     return null
@@ -116,14 +116,14 @@ export async function loadLatestConversation(filebarId: string): Promise<Convers
 
   // Get the most recently updated conversation
   const latest = conversations.sort((a, b) => b.updatedAt - a.updatedAt)[0]
-  return loadConversation(filebarId, latest.id)
+  return loadConversation(workspaceId, latest.id)
 }
 
 /**
- * Lists all conversations for a filebar.
+ * Lists all conversations for a workspace.
  */
-export async function listConversations(filebarId: string): Promise<ConversationListItem[]> {
-  const dir = getConversationsDir(filebarId)
+export async function listConversations(workspaceId: string): Promise<ConversationListItem[]> {
+  const dir = getConversationsDir(workspaceId)
 
   if (!existsSync(dir)) {
     return []
@@ -163,10 +163,10 @@ export async function listConversations(filebarId: string): Promise<Conversation
  * Deletes a conversation.
  */
 export async function deleteConversation(
-  filebarId: string,
+  workspaceId: string,
   conversationId: string
 ): Promise<boolean> {
-  const dir = getConversationsDir(filebarId)
+  const dir = getConversationsDir(workspaceId)
   const filePath = path.join(dir, `${conversationId}.json`)
 
   if (!existsSync(filePath)) {
@@ -221,10 +221,10 @@ export async function updateMessage(
 }
 
 /**
- * Gets a hash of filebar folders to use as a filebar ID.
+ * Gets a hash of workspace folders to use as a workspace ID.
  * This ensures conversations are grouped by workspace configuration.
  */
-export function getFilebarId(folders: string[]): string {
+export function getWorkspaceId(folders: string[]): string {
   if (folders.length === 0) {
     return 'default'
   }
@@ -248,16 +248,16 @@ export function getFilebarId(folders: string[]): string {
  * Cleans up old conversations (optional).
  */
 export async function cleanupOldConversations(
-  filebarId: string,
+  workspaceId: string,
   maxAge: number = 30 * 24 * 60 * 60 * 1000 // 30 days
 ): Promise<number> {
-  const conversations = await listConversations(filebarId)
+  const conversations = await listConversations(workspaceId)
   const now = Date.now()
   let deleted = 0
 
   for (const conv of conversations) {
     if (now - conv.updatedAt > maxAge) {
-      const success = await deleteConversation(filebarId, conv.id)
+      const success = await deleteConversation(workspaceId, conv.id)
       if (success) deleted++
     }
   }

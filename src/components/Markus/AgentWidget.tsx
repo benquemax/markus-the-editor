@@ -1,5 +1,5 @@
 /**
- * MarkusPanel Component
+ * AgentWidget Component
  *
  * Main container for the Markus AI agent interface.
  * Connects to the standalone Markus server via HTTP/WebSocket.
@@ -56,12 +56,12 @@ import type {
 // Fallback URL when running outside Electron (e.g. browser dev)
 const DEFAULT_SERVER_URL = 'http://localhost:3847'
 
-interface MarkusPanelProps {
+interface AgentWidgetProps {
   workspaceFolders: string[]
   openFiles: string[]
 }
 
-export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
+export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
   // Client and connection state
   const clientRef = useRef<MarkusClient | null>(null)
   const connectionRef = useRef<MarkusConnection | null>(null)
@@ -214,7 +214,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
         setConversation({
           id: info.id,
           title: 'New Conversation',
-          filebarId: info.filebarId,
+          workspaceId: info.workspaceId,
           messages: [],
           createdAt: info.createdAt,
           updatedAt: info.createdAt
@@ -245,7 +245,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
       // Subscribe to connection events
       connection.onConnection((event) => {
         if (event.type === 'disconnected') {
-          console.log('[MarkusPanel] WebSocket disconnected:', event.reason)
+          console.log('[AgentWidget] WebSocket disconnected:', event.reason)
         } else if (event.type === 'error') {
           setError(event.error)
         }
@@ -253,7 +253,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
 
       try {
         await connection.connect()
-        console.log('[MarkusPanel] WebSocket connected')
+        console.log('[AgentWidget] WebSocket connected')
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to connect WebSocket')
       }
@@ -409,7 +409,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
       setConversation({
         id: info.id,
         title: 'New Conversation',
-        filebarId: info.filebarId,
+        workspaceId: info.workspaceId,
         messages: [],
         createdAt: info.createdAt,
         updatedAt: info.createdAt
@@ -425,7 +425,7 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
   // Handle loading a conversation (placeholder - needs server endpoint)
   const handleLoadConversation = useCallback(async (conversationId: string) => {
     // TODO: Need to add message history endpoint to server
-    console.log('[MarkusPanel] Loading conversation:', conversationId)
+    console.log('[AgentWidget] Loading conversation:', conversationId)
     setError('Loading conversations not yet supported in server mode')
   }, [])
 
@@ -544,6 +544,18 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
     )
   }
 
+  // Render settings panel if open — checked before the !isConfigured guard
+  // so that clicking "Open Settings" from the configuration prompt works.
+  if (showSettings && clientRef.current) {
+    return (
+      <AgentDefinitionsPanel
+        client={clientRef.current}
+        onClose={() => setShowSettings(false)}
+        onAgentsChanged={handleAgentsChanged}
+      />
+    )
+  }
+
   // Show configuration prompt if not configured
   if (!isConfigured) {
     return (
@@ -574,17 +586,6 @@ export function MarkusPanel({ workspaceFolders }: MarkusPanelProps) {
           </button>
         </div>
       </div>
-    )
-  }
-
-  // Render settings panel if open
-  if (showSettings && clientRef.current) {
-    return (
-      <AgentDefinitionsPanel
-        client={clientRef.current}
-        onClose={() => setShowSettings(false)}
-        onAgentsChanged={handleAgentsChanged}
-      />
     )
   }
 

@@ -12,7 +12,7 @@
 export interface ConversationInfo {
   id: string
   workspaceFolders: string[]
-  filebarId: string
+  workspaceId: string
   createdAt: number
   title?: string
   agentIds?: string[]
@@ -20,7 +20,7 @@ export interface ConversationInfo {
 
 export interface CreateConversationOptions {
   workspaceFolders: string[]
-  filebarId?: string
+  workspaceId?: string
   /** Agent definition IDs to use for this conversation */
   agentIds?: string[]
 }

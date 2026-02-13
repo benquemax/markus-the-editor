@@ -1,7 +1,7 @@
 /**
- * Filebar Component
+ * Workspace Component
  *
- * Left sidebar that displays multiple folder panels.
+ * Side panel that displays multiple folder panels.
  * Each folder can have its own Git controls if it's a git repository.
  * Supports adding and removing folders, and saving/loading workspace configurations.
  */
@@ -9,11 +9,11 @@
 import { useState, useCallback, useEffect } from 'react'
 import { FolderPlus, Save, FolderOpen, Clock, Loader2 } from 'lucide-react'
 import { FolderPanel } from './FolderPanel'
-import { SaveFilebarDialog } from './SaveFilebarDialog'
-import { LoadFilebarDialog } from './LoadFilebarDialog'
+import { SaveWorkspaceDialog } from './SaveWorkspaceDialog'
+import { LoadWorkspaceDialog } from './LoadWorkspaceDialog'
 import { cn } from '../../lib/utils'
 
-interface FilebarListItem {
+interface WorkspaceListItem {
   name: string
   fileName: string
   folderCount: number
@@ -24,7 +24,7 @@ export interface FolderEntry {
   isGitRepo: boolean
 }
 
-interface FilebarProps {
+interface WorkspaceProps {
   folders: FolderEntry[]
   onFoldersChange: (folders: FolderEntry[]) => void
   onOpenFile: (filePath: string) => void
@@ -32,23 +32,23 @@ interface FilebarProps {
   activeFilePath?: string | null
 }
 
-export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, activeFilePath }: FilebarProps) {
+export function Workspace({ folders, onFoldersChange, onOpenFile, onConflict, activeFilePath }: WorkspaceProps) {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [showLoadDialog, setShowLoadDialog] = useState(false)
-  const [recentFilebars, setRecentFilebars] = useState<FilebarListItem[]>([])
+  const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceListItem[]>([])
   const [isLoadingRecent, setIsLoadingRecent] = useState(false)
   const [loadingFileName, setLoadingFileName] = useState<string | null>(null)
 
   /**
-   * Fetches the list of saved filebars for the "Latest filebars" section.
+   * Fetches the list of saved workspaces for the "Latest workspaces" section.
    */
-  const fetchRecentFilebars = useCallback(async () => {
+  const fetchRecentWorkspaces = useCallback(async () => {
     setIsLoadingRecent(true)
     try {
-      const result = await window.electron.filebar.list()
+      const result = await window.electron.workspace.list()
       if (result.success) {
-        // Show up to 5 most recent filebars
-        setRecentFilebars(result.filebars.slice(0, 5))
+        // Show up to 5 most recent workspaces
+        setRecentWorkspaces(result.workspaces.slice(0, 5))
       }
     } catch {
       // Silently fail - this is a convenience feature
@@ -57,20 +57,20 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
     }
   }, [])
 
-  // Load recent filebars when component mounts and when folders become empty
+  // Load recent workspaces when component mounts and when folders become empty
   useEffect(() => {
     if (folders.length === 0) {
-      fetchRecentFilebars()
+      fetchRecentWorkspaces()
     }
-  }, [folders.length, fetchRecentFilebars])
+  }, [folders.length, fetchRecentWorkspaces])
 
   /**
-   * Loads a filebar from the recent list.
+   * Loads a workspace from the recent list.
    */
-  const handleQuickLoadFilebar = useCallback(async (fileName: string) => {
+  const handleQuickLoadWorkspace = useCallback(async (fileName: string) => {
     setLoadingFileName(fileName)
     try {
-      const result = await window.electron.filebar.load(fileName)
+      const result = await window.electron.workspace.load(fileName)
       if (result.success && result.folders) {
         onFoldersChange(result.folders)
       }
@@ -82,7 +82,7 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
   }, [onFoldersChange])
 
   /**
-   * Adds a new folder to the filebar.
+   * Adds a new folder to the workspace.
    */
   const handleAddFolder = useCallback(async () => {
     const result = await window.electron.explorer.openFolder()
@@ -112,31 +112,31 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
   }, [folders, onFoldersChange])
 
   /**
-   * Removes a folder from the filebar.
+   * Removes a folder from the workspace.
    */
   const handleRemoveFolder = useCallback((path: string) => {
     onFoldersChange(folders.filter(f => f.path !== path))
   }, [folders, onFoldersChange])
 
   /**
-   * Saves the current filebar configuration.
+   * Saves the current workspace configuration.
    */
-  const handleSaveFilebar = useCallback(async (name: string) => {
-    const result = await window.electron.filebar.save(name, folders)
+  const handleSaveWorkspace = useCallback(async (name: string) => {
+    const result = await window.electron.workspace.save(name, folders)
     if (!result.success) {
-      throw new Error(result.error || 'Failed to save filebar')
+      throw new Error(result.error || 'Failed to save workspace')
     }
   }, [folders])
 
   /**
-   * Loads a filebar configuration.
+   * Loads a workspace configuration.
    */
-  const handleLoadFilebar = useCallback(async (fileName: string) => {
-    const result = await window.electron.filebar.load(fileName)
+  const handleLoadWorkspace = useCallback(async (fileName: string) => {
+    const result = await window.electron.workspace.load(fileName)
     if (result.success && result.folders) {
       onFoldersChange(result.folders)
     } else {
-      throw new Error(result.error || 'Failed to load filebar')
+      throw new Error(result.error || 'Failed to load workspace')
     }
   }, [onFoldersChange])
 
@@ -145,13 +145,13 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Filebar
+          Workspace
         </span>
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => setShowSaveDialog(true)}
             className="p-1 hover:bg-accent rounded disabled:opacity-50"
-            title="Save filebar"
+            title="Save workspace"
             disabled={folders.length === 0}
           >
             <Save className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
@@ -159,7 +159,7 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
           <button
             onClick={() => setShowLoadDialog(true)}
             className="p-1 hover:bg-accent rounded"
-            title="Load filebar"
+            title="Load workspace"
           >
             <FolderOpen className="w-3.5 h-3.5 text-muted-foreground hover:text-foreground" />
           </button>
@@ -174,7 +174,7 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
       </div>
 
       {/* Folder panels */}
-      <div className="flex-1 overflow-auto filebar-scroll p-1">
+      <div className="flex-1 overflow-auto widget-scroll p-1">
         {folders.length === 0 ? (
           <div className="flex flex-col h-full p-4">
             {/* Top section - Add folder */}
@@ -191,12 +191,12 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
               </button>
             </div>
 
-            {/* Latest filebars section */}
+            {/* Latest workspaces section */}
             <div className="flex-1">
               <div className="flex items-center gap-2 mb-2">
                 <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                 <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Latest Filebars
+                  Latest Workspaces
                 </span>
               </div>
 
@@ -204,16 +204,16 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
                 <div className="flex items-center justify-center py-4">
                   <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                 </div>
-              ) : recentFilebars.length === 0 ? (
+              ) : recentWorkspaces.length === 0 ? (
                 <p className="text-xs text-muted-foreground py-2">
-                  No saved filebars yet
+                  No saved workspaces yet
                 </p>
               ) : (
                 <div className="space-y-1">
-                  {recentFilebars.map((filebar) => (
+                  {recentWorkspaces.map((workspace) => (
                     <button
-                      key={filebar.fileName}
-                      onClick={() => handleQuickLoadFilebar(filebar.fileName)}
+                      key={workspace.fileName}
+                      onClick={() => handleQuickLoadWorkspace(workspace.fileName)}
                       disabled={loadingFileName !== null}
                       className={cn(
                         'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left',
@@ -223,12 +223,12 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
                     >
                       <FolderOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <div className="text-sm truncate">{filebar.name}</div>
+                        <div className="text-sm truncate">{workspace.name}</div>
                         <div className="text-xs text-muted-foreground">
-                          {filebar.folderCount} {filebar.folderCount === 1 ? 'folder' : 'folders'}
+                          {workspace.folderCount} {workspace.folderCount === 1 ? 'folder' : 'folders'}
                         </div>
                       </div>
-                      {loadingFileName === filebar.fileName && (
+                      {loadingFileName === workspace.fileName && (
                         <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
                       )}
                     </button>
@@ -236,13 +236,13 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
                 </div>
               )}
 
-              {/* Show all filebars button */}
-              {recentFilebars.length > 0 && (
+              {/* Show all workspaces button */}
+              {recentWorkspaces.length > 0 && (
                 <button
                   onClick={() => setShowLoadDialog(true)}
                   className="w-full mt-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded text-center"
                 >
-                  Show all filebars...
+                  Show all workspaces...
                 </button>
               )}
             </div>
@@ -275,15 +275,15 @@ export function Filebar({ folders, onFoldersChange, onOpenFile, onConflict, acti
       </div>
 
       {/* Dialogs */}
-      <SaveFilebarDialog
+      <SaveWorkspaceDialog
         isOpen={showSaveDialog}
         onClose={() => setShowSaveDialog(false)}
-        onSave={handleSaveFilebar}
+        onSave={handleSaveWorkspace}
       />
-      <LoadFilebarDialog
+      <LoadWorkspaceDialog
         isOpen={showLoadDialog}
         onClose={() => setShowLoadDialog(false)}
-        onLoad={handleLoadFilebar}
+        onLoad={handleLoadWorkspace}
       />
     </div>
   )

@@ -122,7 +122,7 @@ export function migrateConversation(old: Conversation): ConversationLog {
 
   return {
     id: old.id,
-    filebarId: old.filebarId,
+    workspaceId: old.filebarId,
     title: old.title,
     mode,
     userMessages,
@@ -322,7 +322,7 @@ export function convertToOldFormat(log: ConversationLog): Conversation {
   return {
     id: log.id,
     title: log.title,
-    filebarId: log.filebarId,
+    workspaceId: log.filebarId,
     messages,
     createdAt: log.createdAt,
     updatedAt: log.updatedAt

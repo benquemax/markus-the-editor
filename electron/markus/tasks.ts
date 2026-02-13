@@ -5,7 +5,7 @@
  * Task lists survive context condensation and keep the agent focused
  * on the current work. Each conversation has its own task list.
  *
- * Storage: ~/.config/markus-the-editor/filebars/{filebarId}/tasks/{conversationId}.json
+ * Storage: ~/.config/markus-the-editor/workspaces/{workspaceId}/tasks/{conversationId}.json
  */
 
 import path from 'path'
@@ -15,17 +15,17 @@ import { Task, TaskList } from './types'
 import { getConfigDir } from './settings'
 
 /**
- * Gets the tasks directory for a specific filebar.
+ * Gets the tasks directory for a specific workspace.
  */
-export function getTasksDir(filebarId: string): string {
-  return path.join(getConfigDir(), 'filebars', filebarId, 'tasks')
+export function getTasksDir(workspaceId: string): string {
+  return path.join(getConfigDir(), 'workspaces', workspaceId, 'tasks')
 }
 
 /**
  * Ensures the tasks directory exists.
  */
-async function ensureTasksDir(filebarId: string): Promise<string> {
-  const dir = getTasksDir(filebarId)
+async function ensureTasksDir(workspaceId: string): Promise<string> {
+  const dir = getTasksDir(workspaceId)
   await fs.mkdir(dir, { recursive: true })
   return dir
 }
@@ -33,8 +33,8 @@ async function ensureTasksDir(filebarId: string): Promise<string> {
 /**
  * Gets the file path for a conversation's task list.
  */
-function getTaskListPath(filebarId: string, conversationId: string): string {
-  return path.join(getTasksDir(filebarId), `${conversationId}.json`)
+function getTaskListPath(workspaceId: string, conversationId: string): string {
+  return path.join(getTasksDir(workspaceId), `${conversationId}.json`)
 }
 
 /**
@@ -84,10 +84,10 @@ function cleanupTaskList(taskList: TaskList): void {
  * Automatically cleans up duplicates and migrates legacy IDs.
  */
 export async function loadTaskList(
-  filebarId: string,
+  workspaceId: string,
   conversationId: string
 ): Promise<TaskList | null> {
-  const filePath = getTaskListPath(filebarId, conversationId)
+  const filePath = getTaskListPath(workspaceId, conversationId)
 
   if (!existsSync(filePath)) {
     return null
@@ -104,7 +104,7 @@ export async function loadTaskList(
     if (taskList.tasks.length !== originalCount) {
       console.log(`[Markus] Cleaned up ${originalCount - taskList.tasks.length} duplicate tasks`)
       // Save the cleaned up list
-      await saveTaskList(filebarId, taskList)
+      await saveTaskList(workspaceId, taskList)
     }
 
     return taskList
@@ -118,11 +118,11 @@ export async function loadTaskList(
  * Saves the task list to disk.
  */
 export async function saveTaskList(
-  filebarId: string,
+  workspaceId: string,
   taskList: TaskList
 ): Promise<void> {
-  await ensureTasksDir(filebarId)
-  const filePath = getTaskListPath(filebarId, taskList.conversationId)
+  await ensureTasksDir(workspaceId)
+  const filePath = getTaskListPath(workspaceId, taskList.conversationId)
 
   taskList.updatedAt = Date.now()
 
@@ -133,10 +133,10 @@ export async function saveTaskList(
  * Deletes the task list for a conversation (called on task approval).
  */
 export async function deleteTaskList(
-  filebarId: string,
+  workspaceId: string,
   conversationId: string
 ): Promise<boolean> {
-  const filePath = getTaskListPath(filebarId, conversationId)
+  const filePath = getTaskListPath(workspaceId, conversationId)
 
   if (!existsSync(filePath)) {
     return false

@@ -21,7 +21,7 @@ import {
   runThoughtLoop,
   loadTaskList,
   createTaskList,
-  getFilebarId,
+  getWorkspaceId,
   isMultiAgentEnabled,
   isMultiAgentInitialized,
   initializeMultiAgentSystem,
@@ -230,7 +230,7 @@ async function handleChatMessage(
   }
 
   const workspaceFolders = conversation.workspaceFolders
-  const filebarId = getFilebarId(workspaceFolders)
+  const workspaceId = getWorkspaceId(workspaceFolders)
 
   // Lazy-initialize multi-agent system:
   // 1. Per-conversation agents (from API-defined agent definitions) take priority
@@ -281,11 +281,11 @@ async function handleChatMessage(
   let log = activeConversationLogs.get(conversationId)
   if (!log) {
     // Try to load from disk
-    log = await loadLog(filebarId, conversationId)
+    log = await loadLog(workspaceId, conversationId)
 
     if (!log) {
       // Create new log
-      log = createLog(filebarId, planningMode ? 'planning' : 'execution')
+      log = createLog(workspaceId, planningMode ? 'planning' : 'execution')
       log.id = conversationId
     }
 
@@ -361,7 +361,7 @@ async function handleChatMessage(
       log,
       settings: settings as any, // Cast to avoid type mismatch
       workspaceFolders,
-      filebarId,
+      workspaceId,
       transport: transportAdapter as any,
       getOpenFiles: () => [], // No open files in server mode
       onEvent: handleEvent,
@@ -382,7 +382,7 @@ async function handleChatMessage(
     await saveLog(log)
 
     // Send task list update
-    const taskList = await loadTaskList(filebarId, conversationId)
+    const taskList = await loadTaskList(workspaceId, conversationId)
     if (taskList) {
       transport.sendTasksUpdated(taskList.tasks)
     }

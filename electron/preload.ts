@@ -37,7 +37,7 @@ export interface MarkusSettings {
 export interface MarkusConversation {
   id: string
   title: string
-  filebarId: string
+  workspaceId: string
   messages: MarkusChatMessage[]
   createdAt: number
   updatedAt: number
@@ -218,7 +218,7 @@ export interface ElectronAPI {
     onToggleTheme: (callback: (theme: 'light' | 'dark' | 'system') => void) => () => void
     onToggleSplitView: (callback: () => void) => () => void
     onOpenCommandPalette: (callback: () => void) => () => void
-    onToggleExplorer: (callback: () => void) => () => void
+    onToggleWorkspace: (callback: () => void) => () => void
   }
   explorer: {
     readDirectory: (path: string) => Promise<{ success: boolean; entries?: FileEntry[]; error?: string }>
@@ -233,9 +233,9 @@ export interface ElectronAPI {
     onDirectoryChanged: (callback: () => void) => () => void
     onOpenFolder: (callback: (data: { path: string }) => void) => () => void
   }
-  filebar: {
+  workspace: {
     save: (name: string, folders: Array<{ path: string; isGitRepo: boolean }>) => Promise<{ success: boolean; path?: string; error?: string }>
-    list: () => Promise<{ success: boolean; filebars: Array<{ name: string; fileName: string; folderCount: number }>; error?: string }>
+    list: () => Promise<{ success: boolean; workspaces: Array<{ name: string; fileName: string; folderCount: number }>; error?: string }>
     load: (fileName: string) => Promise<{ success: boolean; folders?: Array<{ path: string; isGitRepo: boolean }>; error?: string }>
     delete: (fileName: string) => Promise<{ success: boolean; error?: string }>
   }
@@ -304,7 +304,7 @@ export interface ElectronAPI {
     onToolCallComplete: (callback: (data: { conversationId: string; toolCallId: string; result: unknown }) => void) => () => void
     onRequestComplete: (callback: (data: { conversationId: string; messageId: string; waitingForInput?: boolean }) => void) => () => void
     onRequestError: (callback: (data: { conversationId: string; error: string }) => void) => () => void
-    onToggleMarkus: (callback: () => void) => () => void
+    onToggleAgent: (callback: () => void) => () => void
 
     // Task list events
     onTasksUpdated: (callback: (data: { conversationId: string; tasks: MarkusTask[] }) => void) => () => void
@@ -403,10 +403,10 @@ const api: ElectronAPI = {
       ipcRenderer.on('menu:openCommandPalette', handler)
       return () => ipcRenderer.removeListener('menu:openCommandPalette', handler)
     },
-    onToggleExplorer: (callback) => {
+    onToggleWorkspace: (callback) => {
       const handler = () => callback()
-      ipcRenderer.on('menu:toggleExplorer', handler)
-      return () => ipcRenderer.removeListener('menu:toggleExplorer', handler)
+      ipcRenderer.on('menu:toggleWorkspace', handler)
+      return () => ipcRenderer.removeListener('menu:toggleWorkspace', handler)
     }
   },
   explorer: {
@@ -430,11 +430,11 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener('explorer:openFolder', handler)
     }
   },
-  filebar: {
-    save: (name, folders) => ipcRenderer.invoke('filebar:save', name, folders),
-    list: () => ipcRenderer.invoke('filebar:list'),
-    load: (fileName) => ipcRenderer.invoke('filebar:load', fileName),
-    delete: (fileName) => ipcRenderer.invoke('filebar:delete', fileName)
+  workspace: {
+    save: (name, folders) => ipcRenderer.invoke('workspace:save', name, folders),
+    list: () => ipcRenderer.invoke('workspace:list'),
+    load: (fileName) => ipcRenderer.invoke('workspace:load', fileName),
+    delete: (fileName) => ipcRenderer.invoke('workspace:delete', fileName)
   },
   markus: {
     // Server URL
@@ -507,10 +507,10 @@ const api: ElectronAPI = {
       ipcRenderer.on('markus:requestError', handler)
       return () => ipcRenderer.removeListener('markus:requestError', handler)
     },
-    onToggleMarkus: (callback) => {
+    onToggleAgent: (callback) => {
       const handler = () => callback()
-      ipcRenderer.on('menu:toggleMarkus', handler)
-      return () => ipcRenderer.removeListener('menu:toggleMarkus', handler)
+      ipcRenderer.on('menu:toggleAgent', handler)
+      return () => ipcRenderer.removeListener('menu:toggleAgent', handler)
     },
 
     // Task list events

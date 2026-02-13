@@ -22,7 +22,7 @@ import type { Task, BlockingToolUI, ToolDefinition } from '../types'
  */
 export interface ConversationLog {
   id: string
-  filebarId: string
+  workspaceId: string
   title: string
   mode: 'planning' | 'execution'
 

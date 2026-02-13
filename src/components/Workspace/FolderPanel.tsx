@@ -365,7 +365,7 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
           )}
 
           {/* File tree */}
-          <div className="max-h-64 overflow-auto filebar-scroll">
+          <div className="max-h-64 overflow-auto widget-scroll">
             {isLoading && tree.length === 0 ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />

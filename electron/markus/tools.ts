@@ -2,7 +2,7 @@
  * Markus Tools System
  *
  * Defines all available tools for the AI agent and their execution logic.
- * Tools are sandboxed to only operate within filebar workspace directories.
+ * Tools are sandboxed to only operate within workspace directories.
  */
 
 import fs from 'fs/promises'
@@ -224,7 +224,7 @@ export const TOOL_DEFINITIONS: ToolDefinition[] = [
   },
   {
     name: 'get_workspace_folders',
-    description: 'Get the list of workspace folders currently open in the filebar.',
+    description: 'Get the list of workspace folders currently open in the workspace.',
     parameters: {
       type: 'object',
       properties: {}
@@ -1025,12 +1025,12 @@ async function executeUpdateTasks(
   args: Record<string, unknown>,
   context: ToolContext
 ): Promise<ToolResult> {
-  if (!context.filebarId || !context.conversationId) {
-    return { success: false, error: 'Missing filebarId or conversationId in context' }
+  if (!context.workspaceId || !context.conversationId) {
+    return { success: false, error: 'Missing workspaceId or conversationId in context' }
   }
 
   // Load or create task list
-  let taskList = await loadTaskList(context.filebarId, context.conversationId)
+  let taskList = await loadTaskList(context.workspaceId, context.conversationId)
   if (!taskList) {
     taskList = createTaskList(context.conversationId)
   }
@@ -1098,7 +1098,7 @@ async function executeUpdateTasks(
   // Save the updated task list
   console.log('[Markus] Saving task list:', taskList.tasks.length, 'tasks')
   console.log('[Markus] Task descriptions:', taskList.tasks.map(t => `[${t.status}] ${t.description}`))
-  await saveTaskList(context.filebarId, taskList)
+  await saveTaskList(context.workspaceId, taskList)
 
   // Return the formatted task list, with warnings appended so the LLM sees errors
   let result = formatTaskListForPrompt(taskList)

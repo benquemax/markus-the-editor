@@ -33,7 +33,7 @@ import {
   loadLatestConversation,
   listConversations,
   deleteConversation,
-  getFilebarId
+  getWorkspaceId
 } from './conversations'
 import { proposeMemoryUpdate, applyMemoryUpdate } from './memory'
 import {
@@ -145,20 +145,20 @@ export function setupMarkusHandlers(
 
   ipcMain.handle('markus:createConversation', async () => {
     const folders = getWorkspaceFolders()
-    const filebarId = getFilebarId(folders)
-    return createConversation(filebarId)
+    const workspaceId = getWorkspaceId(folders)
+    return createConversation(workspaceId)
   })
 
   ipcMain.handle('markus:loadConversation', async (_, conversationId: string) => {
     const folders = getWorkspaceFolders()
-    const filebarId = getFilebarId(folders)
-    return loadConversation(filebarId, conversationId)
+    const workspaceId = getWorkspaceId(folders)
+    return loadConversation(workspaceId, conversationId)
   })
 
   ipcMain.handle('markus:loadLatestConversation', async () => {
     const folders = getWorkspaceFolders()
-    const filebarId = getFilebarId(folders)
-    return loadLatestConversation(filebarId)
+    const workspaceId = getWorkspaceId(folders)
+    return loadLatestConversation(workspaceId)
   })
 
   ipcMain.handle('markus:saveConversation', async (_, conversation: Conversation) => {
@@ -168,14 +168,14 @@ export function setupMarkusHandlers(
 
   ipcMain.handle('markus:listConversations', async () => {
     const folders = getWorkspaceFolders()
-    const filebarId = getFilebarId(folders)
-    return listConversations(filebarId)
+    const workspaceId = getWorkspaceId(folders)
+    return listConversations(workspaceId)
   })
 
   ipcMain.handle('markus:deleteConversation', async (_, conversationId: string) => {
     const folders = getWorkspaceFolders()
-    const filebarId = getFilebarId(folders)
-    return deleteConversation(filebarId, conversationId)
+    const workspaceId = getWorkspaceId(folders)
+    return deleteConversation(workspaceId, conversationId)
   })
 
   // ========================================================================
@@ -202,17 +202,17 @@ export function setupMarkusHandlers(
     }
 
     const workspaceFolders = getWorkspaceFolders()
-    const filebarId = getFilebarId(workspaceFolders)
+    const workspaceId = getWorkspaceId(workspaceFolders)
 
     // Get or create conversation log
     let log = activeConversationLogs.get(conversation.id)
     if (!log) {
       // Try to load from disk
-      log = await loadLog(filebarId, conversation.id)
+      log = await loadLog(workspaceId, conversation.id)
 
       if (!log) {
         // Create new log
-        log = createLog(filebarId, planningMode ? 'planning' : 'execution')
+        log = createLog(workspaceId, planningMode ? 'planning' : 'execution')
         log.id = conversation.id // Use same ID as conversation for compatibility
       }
 
@@ -278,7 +278,7 @@ export function setupMarkusHandlers(
         log,
         settings,
         workspaceFolders,
-        filebarId,
+        workspaceId,
         transport: transport!,
         getOpenFiles,
         onEvent: handleEvent,
@@ -296,7 +296,7 @@ export function setupMarkusHandlers(
       await saveConversation(updatedConversation)
 
       // Send task list update
-      const taskList = await loadTaskList(filebarId, conversation.id)
+      const taskList = await loadTaskList(workspaceId, conversation.id)
       if (taskList) {
         transport!.sendTasksUpdated(conversation.id, taskList.tasks)
       }
@@ -388,10 +388,10 @@ export function setupMarkusHandlers(
   }) => {
     const { conversationId } = args
     const workspaceFolders = getWorkspaceFolders()
-    const filebarId = getFilebarId(workspaceFolders)
+    const workspaceId = getWorkspaceId(workspaceFolders)
 
     // Delete the task list
-    await deleteTaskList(filebarId, conversationId)
+    await deleteTaskList(workspaceId, conversationId)
 
     // Notify frontend via transport
     if (transport) {
@@ -406,8 +406,8 @@ export function setupMarkusHandlers(
    */
   ipcMain.handle('markus:getTaskList', async (_, conversationId: string) => {
     const workspaceFolders = getWorkspaceFolders()
-    const filebarId = getFilebarId(workspaceFolders)
-    const taskList = await loadTaskList(filebarId, conversationId)
+    const workspaceId = getWorkspaceId(workspaceFolders)
+    const taskList = await loadTaskList(workspaceId, conversationId)
     return taskList ? taskList.tasks : []
   })
 

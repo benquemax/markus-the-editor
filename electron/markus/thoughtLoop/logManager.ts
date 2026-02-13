@@ -5,7 +5,7 @@
  * Stores logs as JSON files alongside conversations for debugging
  * and enables algorithmic context replay.
  *
- * Storage path: ~/.config/markus-the-editor/filebars/{filebarId}/logs/{conversationId}.json
+ * Storage path: ~/.config/markus-the-editor/workspaces/{workspaceId}/logs/{conversationId}.json
  */
 
 import path from 'path'
@@ -26,17 +26,17 @@ import type {
 // ============================================================================
 
 /**
- * Gets the logs directory for a specific filebar.
+ * Gets the logs directory for a specific workspace.
  */
-function getLogsDir(filebarId: string): string {
-  return path.join(getConfigDir(), 'filebars', filebarId, 'logs')
+function getLogsDir(workspaceId: string): string {
+  return path.join(getConfigDir(), 'workspaces', workspaceId, 'logs')
 }
 
 /**
  * Ensures the logs directory exists.
  */
-async function ensureLogsDir(filebarId: string): Promise<string> {
-  const dir = getLogsDir(filebarId)
+async function ensureLogsDir(workspaceId: string): Promise<string> {
+  const dir = getLogsDir(workspaceId)
   await fs.mkdir(dir, { recursive: true })
   return dir
 }
@@ -44,8 +44,8 @@ async function ensureLogsDir(filebarId: string): Promise<string> {
 /**
  * Gets the file path for a conversation's log.
  */
-function getLogPath(filebarId: string, conversationId: string): string {
-  return path.join(getLogsDir(filebarId), `${conversationId}.json`)
+function getLogPath(workspaceId: string, conversationId: string): string {
+  return path.join(getLogsDir(workspaceId), `${conversationId}.json`)
 }
 
 // ============================================================================
@@ -56,13 +56,13 @@ function getLogPath(filebarId: string, conversationId: string): string {
  * Creates a new conversation log.
  */
 export function createLog(
-  filebarId: string,
+  workspaceId: string,
   mode: 'planning' | 'execution' = 'planning'
 ): ConversationLog {
   const now = Date.now()
   return {
     id: uuidv4(),
-    filebarId,
+    workspaceId,
     title: 'New Conversation',
     mode,
     userMessages: [],
@@ -84,8 +84,8 @@ export function createLog(
  * Saves a conversation log to disk.
  */
 export async function saveLog(log: ConversationLog): Promise<void> {
-  await ensureLogsDir(log.filebarId)
-  const filePath = getLogPath(log.filebarId, log.id)
+  await ensureLogsDir(log.workspaceId)
+  const filePath = getLogPath(log.workspaceId, log.id)
 
   // Update timestamps
   log.updatedAt = Date.now()
@@ -107,10 +107,10 @@ export async function saveLog(log: ConversationLog): Promise<void> {
  * Returns null if no log exists.
  */
 export async function loadLog(
-  filebarId: string,
+  workspaceId: string,
   conversationId: string
 ): Promise<ConversationLog | null> {
-  const filePath = getLogPath(filebarId, conversationId)
+  const filePath = getLogPath(workspaceId, conversationId)
 
   if (!existsSync(filePath)) {
     return null
@@ -129,10 +129,10 @@ export async function loadLog(
  * Deletes a conversation log.
  */
 export async function deleteLog(
-  filebarId: string,
+  workspaceId: string,
   conversationId: string
 ): Promise<boolean> {
-  const filePath = getLogPath(filebarId, conversationId)
+  const filePath = getLogPath(workspaceId, conversationId)
 
   if (!existsSync(filePath)) {
     return false
@@ -148,12 +148,12 @@ export async function deleteLog(
 }
 
 /**
- * Lists all conversation logs for a filebar.
+ * Lists all conversation logs for a workspace.
  */
 export async function listLogs(
-  filebarId: string
+  workspaceId: string
 ): Promise<Array<{ id: string; title: string; updatedAt: number; iterationCount: number }>> {
-  const dir = getLogsDir(filebarId)
+  const dir = getLogsDir(workspaceId)
 
   if (!existsSync(dir)) {
     return []

@@ -27,10 +27,10 @@ interface ConversationState {
 }
 
 /**
- * Generates a filebarId from workspace folders.
+ * Generates a workspaceId from workspace folders.
  * This is a hash of the sorted folder paths for grouping conversations.
  */
-function getFilebarId(workspaceFolders: string[]): string {
+function getWorkspaceId(workspaceFolders: string[]): string {
   const sorted = [...workspaceFolders].sort()
   const combined = sorted.join('|')
   // Simple hash for now - could use crypto.createHash('sha256') for production
@@ -54,13 +54,13 @@ export class ConversationManager {
    */
   create(request: CreateConversationRequest): ConversationInfo {
     const id = uuidv4()
-    const filebarId = request.filebarId || getFilebarId(request.workspaceFolders)
+    const workspaceId = request.workspaceId || getWorkspaceId(request.workspaceFolders)
     const now = Date.now()
 
     const info: ConversationInfo = {
       id,
       workspaceFolders: request.workspaceFolders,
-      filebarId,
+      workspaceId,
       createdAt: now,
       agentIds: request.agentIds
     }

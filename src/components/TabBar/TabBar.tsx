@@ -5,7 +5,11 @@
  * Supports tab switching, closing, and shows dirty state indicators.
  */
 
-import { X, Plus, FileText, Image, Film, Braces, Code, File } from 'lucide-react'
+import {
+  X, Plus, FileText, Image, Film, Braces, Code, File,
+  PanelLeft, PanelLeftClose, PanelRight, PanelRightClose,
+  PanelTop, PanelTopClose, PanelBottom, PanelBottomClose
+} from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { FileType, getFileType } from '../../lib/fileTypes'
 
@@ -26,6 +30,11 @@ interface TabBarProps {
   onTabClick: (tabId: string) => void
   onTabClose: (tabId: string) => void
   onNewTab?: () => void
+  showWorkspace?: boolean
+  onToggleWorkspace?: () => void
+  showAgent?: boolean
+  onToggleAgent?: () => void
+  isVertical?: boolean
 }
 
 /**
@@ -42,13 +51,38 @@ function getFileTypeIcon(fileType: FileType) {
   }
 }
 
-export function TabBar({ tabs, activeTabId, onTabClick, onTabClose, onNewTab }: TabBarProps) {
+export function TabBar({
+  tabs, activeTabId, onTabClick, onTabClose, onNewTab,
+  showWorkspace, onToggleWorkspace, showAgent, onToggleAgent, isVertical
+}: TabBarProps) {
   if (tabs.length === 0 && !onNewTab) {
     return null
   }
 
+  // Pick icons based on layout direction and panel state
+  const WorkspaceIcon = isVertical
+    ? (showWorkspace ? PanelTopClose : PanelTop)
+    : (showWorkspace ? PanelLeftClose : PanelLeft)
+  const AgentIcon = isVertical
+    ? (showAgent ? PanelBottomClose : PanelBottom)
+    : (showAgent ? PanelRightClose : PanelRight)
+
   return (
     <div className="flex items-center bg-muted/30 border-b border-border overflow-x-auto">
+      {/* Workspace toggle */}
+      {onToggleWorkspace && (
+        <button
+          onClick={onToggleWorkspace}
+          className={cn(
+            'flex items-center justify-center px-2 py-1.5 hover:bg-accent/50 transition-colors',
+            showWorkspace && 'bg-accent/30'
+          )}
+          title="Toggle Workspace (Ctrl+B)"
+        >
+          <WorkspaceIcon className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+        </button>
+      )}
+
       {tabs.map(tab => {
         const Icon = getFileTypeIcon(tab.fileType)
         return (
@@ -95,6 +129,23 @@ export function TabBar({ tabs, activeTabId, onTabClick, onTabClose, onNewTab }: 
           title="New Tab (Ctrl+T)"
         >
           <Plus className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+        </button>
+      )}
+
+      {/* Spacer */}
+      <div className="flex-1" />
+
+      {/* Agent toggle */}
+      {onToggleAgent && (
+        <button
+          onClick={onToggleAgent}
+          className={cn(
+            'flex items-center justify-center px-2 py-1.5 hover:bg-accent/50 transition-colors',
+            showAgent && 'bg-accent/30'
+          )}
+          title="Toggle Agent (Ctrl+M)"
+        >
+          <AgentIcon className="w-4 h-4 text-muted-foreground hover:text-foreground" />
         </button>
       )}
     </div>

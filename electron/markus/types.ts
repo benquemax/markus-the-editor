@@ -226,8 +226,8 @@ export interface Conversation {
   id: string
   /** Auto-generated title from first message */
   title: string
-  /** Associated filebar ID for persistence grouping */
-  filebarId: string
+  /** Associated workspace ID for persistence grouping */
+  workspaceId: string
   messages: ChatMessage[]
   createdAt: number
   updatedAt: number
@@ -380,14 +380,14 @@ export interface ToolResult {
  * Context provided to tool execution.
  */
 export interface ToolContext {
-  /** Allowed workspace directories (from filebar) */
+  /** Allowed workspace directories */
   workspaceFolders: string[]
   /** Currently open files in editor */
   openFiles: string[]
   /** Main window reference for file operations */
   mainWindow: Electron.BrowserWindow | null
-  /** Current filebar ID (for task storage) */
-  filebarId?: string
+  /** Current workspace ID (for task storage) */
+  workspaceId?: string
   /** Current conversation ID */
   conversationId?: string
 }

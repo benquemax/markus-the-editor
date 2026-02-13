@@ -28,12 +28,12 @@ export function setupConversationRoutes(
    *
    * Request body:
    * - workspaceFolders: string[] (required) - Paths to workspace folders
-   * - filebarId: string (optional) - Custom filebar ID for grouping
+   * - workspaceId: string (optional) - Custom workspace ID for grouping
    *
    * Response:
    * - id: string - Conversation ID
    * - workspaceFolders: string[]
-   * - filebarId: string
+   * - workspaceId: string
    * - createdAt: number
    */
   app.post('/conversations', async (req: Request, res: Response) => {
@@ -93,7 +93,7 @@ export function setupConversationRoutes(
 
         const conversation = conversationManager.create({
           workspaceFolders: body.workspaceFolders,
-          filebarId: body.filebarId,
+          workspaceId: body.workspaceId,
           agentIds: body.agentIds
         })
 
@@ -104,7 +104,7 @@ export function setupConversationRoutes(
       } else {
         const conversation = conversationManager.create({
           workspaceFolders: body.workspaceFolders,
-          filebarId: body.filebarId
+          workspaceId: body.workspaceId
         })
 
         res.status(201).json(conversation)

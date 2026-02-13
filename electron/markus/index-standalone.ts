@@ -91,7 +91,7 @@ export {
 
 // Conversations
 export {
-  getFilebarId
+  getWorkspaceId
 } from './conversations'
 
 // Settings

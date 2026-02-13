@@ -122,14 +122,14 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
       label: 'View',
       submenu: [
         {
-          label: 'Toggle Explorer',
+          label: 'Toggle Workspace',
           accelerator: 'CmdOrCtrl+B',
-          click: () => window.webContents.send('menu:toggleExplorer')
+          click: () => window.webContents.send('menu:toggleWorkspace')
         },
         {
-          label: 'Toggle Markus',
+          label: 'Toggle Agent',
           accelerator: 'CmdOrCtrl+M',
-          click: () => window.webContents.send('menu:toggleMarkus')
+          click: () => window.webContents.send('menu:toggleAgent')
         },
         {
           label: 'Toggle Split View',

@@ -5,10 +5,10 @@ import { GitPanel } from './components/GitPanel'
 import { MarkdownPreview } from './components/MarkdownPreview'
 import { ConflictBanner } from './components/ConflictBanner'
 import { ConflictResolver } from './components/ConflictResolver'
-import { Filebar, FolderEntry } from './components/Filebar'
+import { Workspace, FolderEntry } from './components/Workspace'
 import { TabBar, Tab, createUntitledTab, createFileTab, createBinaryFileTab } from './components/TabBar'
 import { FileViewer, FileViewerHandle } from './components/FileViewer'
-import { MarkusPanel } from './components/Markus'
+import { AgentWidget } from './components/Markus'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
 import { cn } from './lib/utils'
@@ -37,27 +37,27 @@ function App() {
   const [behindCount, setBehindCount] = useState(0)
   const [isPulling, setIsPulling] = useState(false)
   const [activeConflict, setActiveConflict] = useState<FileConflict | null>(null)
-  const [showFilebar, setShowFilebar] = useState(false)
+  const [showWorkspace, setShowWorkspace] = useState(false)
   const [folders, setFolders] = useState<FolderEntry[]>([])
-  const [filebarWidth, setFilebarWidth] = useState(280)
+  const [workspaceWidth, setWorkspaceWidth] = useState(280)
   const [isResizing, setIsResizing] = useState(false)
-  const [showMarkusPanel, setShowMarkusPanel] = useState(false)
-  const [markusPanelWidth, setMarkusPanelWidth] = useState(() =>
+  const [showAgent, setShowAgent] = useState(false)
+  const [agentWidth, setAgentWidth] = useState(() =>
     Math.floor(window.innerWidth * 0.25)
   )
-  const [isResizingMarkus, setIsResizingMarkus] = useState(false)
-  const [filebarHeight, setFilebarHeight] = useState(200)
-  const [markusPanelHeight, setMarkusPanelHeight] = useState(() =>
+  const [isResizingAgent, setIsResizingAgent] = useState(false)
+  const [workspaceHeight, setWorkspaceHeight] = useState(200)
+  const [agentHeight, setAgentHeight] = useState(() =>
     Math.floor(window.innerHeight * 0.25)
   )
   const { isVertical } = useLayoutMode()
   const editorRef = useRef<FileViewerHandle>(null)
 
   // Per-mode dimension helpers — vertical uses height, horizontal uses width
-  const filebarDimension = isVertical ? filebarHeight : filebarWidth
-  const setFilebarDimension = isVertical ? setFilebarHeight : setFilebarWidth
-  const markusDimension = isVertical ? markusPanelHeight : markusPanelWidth
-  const setMarkusDimension = isVertical ? setMarkusPanelHeight : setMarkusPanelWidth
+  const workspaceDimension = isVertical ? workspaceHeight : workspaceWidth
+  const setWorkspaceDimension = isVertical ? setWorkspaceHeight : setWorkspaceWidth
+  const agentDimension = isVertical ? agentHeight : agentWidth
+  const setAgentDimension = isVertical ? setAgentHeight : setAgentWidth
 
   // Update tab content helper
   const updateTabContent = useCallback((tabId: string, newContent: string, markDirty = true) => {
@@ -232,7 +232,7 @@ function App() {
     }
   }, [theme])
 
-  // Load saved theme and filebar state
+  // Load saved theme and workspace state
   useEffect(() => {
     const loadState = async () => {
       // Check if the app was launched by opening a file (double-click, command-line).
@@ -245,30 +245,30 @@ function App() {
 
       // Only restore panel visibility when launched normally (not via file open)
       if (!launchedWithFile) {
-        window.electron.store.get('showFilebar').then((saved: unknown) => {
-          if (saved !== undefined && saved !== null) setShowFilebar(saved as boolean)
+        window.electron.store.get('showWorkspace').then((saved: unknown) => {
+          if (saved !== undefined && saved !== null) setShowWorkspace(saved as boolean)
         })
-        window.electron.store.get('showMarkusPanel').then((saved: unknown) => {
-          if (saved !== undefined && saved !== null) setShowMarkusPanel(saved as boolean)
+        window.electron.store.get('showAgent').then((saved: unknown) => {
+          if (saved !== undefined && saved !== null) setShowAgent(saved as boolean)
         })
       }
 
-      window.electron.store.get('filebarFolders').then((saved: unknown) => {
+      window.electron.store.get('workspaceFolders').then((saved: unknown) => {
         if (saved && Array.isArray(saved)) {
           setFolders(saved as FolderEntry[])
         }
       })
-      window.electron.store.get('filebarWidth').then((saved: unknown) => {
-        if (typeof saved === 'number') setFilebarWidth(saved)
+      window.electron.store.get('workspaceWidth').then((saved: unknown) => {
+        if (typeof saved === 'number') setWorkspaceWidth(saved)
       })
-      window.electron.store.get('filebarHeight').then((saved: unknown) => {
-        if (typeof saved === 'number') setFilebarHeight(saved)
+      window.electron.store.get('workspaceHeight').then((saved: unknown) => {
+        if (typeof saved === 'number') setWorkspaceHeight(saved)
       })
-      window.electron.store.get('markusPanelWidth').then((saved: unknown) => {
-        if (typeof saved === 'number') setMarkusPanelWidth(saved)
+      window.electron.store.get('agentWidth').then((saved: unknown) => {
+        if (typeof saved === 'number') setAgentWidth(saved)
       })
-      window.electron.store.get('markusPanelHeight').then((saved: unknown) => {
-        if (typeof saved === 'number') setMarkusPanelHeight(saved)
+      window.electron.store.get('agentHeight').then((saved: unknown) => {
+        if (typeof saved === 'number') setAgentHeight(saved)
       })
     }
     loadState()
@@ -279,42 +279,42 @@ function App() {
     window.electron.store.set('theme', theme)
   }, [theme])
 
-  // Save filebar state when changed
+  // Save workspace state when changed
   useEffect(() => {
-    window.electron.store.set('showFilebar', showFilebar)
-  }, [showFilebar])
+    window.electron.store.set('showWorkspace', showWorkspace)
+  }, [showWorkspace])
 
-  // Save Markus panel state when changed
+  // Save agent panel state when changed
   useEffect(() => {
-    window.electron.store.set('showMarkusPanel', showMarkusPanel)
-  }, [showMarkusPanel])
+    window.electron.store.set('showAgent', showAgent)
+  }, [showAgent])
 
   useEffect(() => {
-    window.electron.store.set('filebarFolders', folders)
+    window.electron.store.set('workspaceFolders', folders)
   }, [folders])
 
   // Save panel dimensions when changed
   useEffect(() => {
-    window.electron.store.set('filebarWidth', filebarWidth)
-  }, [filebarWidth])
+    window.electron.store.set('workspaceWidth', workspaceWidth)
+  }, [workspaceWidth])
 
   useEffect(() => {
-    window.electron.store.set('filebarHeight', filebarHeight)
-  }, [filebarHeight])
+    window.electron.store.set('workspaceHeight', workspaceHeight)
+  }, [workspaceHeight])
 
   useEffect(() => {
-    window.electron.store.set('markusPanelWidth', markusPanelWidth)
-  }, [markusPanelWidth])
+    window.electron.store.set('agentWidth', agentWidth)
+  }, [agentWidth])
 
   useEffect(() => {
-    window.electron.store.set('markusPanelHeight', markusPanelHeight)
-  }, [markusPanelHeight])
+    window.electron.store.set('agentHeight', agentHeight)
+  }, [agentHeight])
 
   /**
-   * Adds a folder to the filebar, checking if it's inside a git repo.
+   * Adds a folder to the workspace, checking if it's inside a git repo.
    * If it's inside a git repo, adds the git root instead.
    */
-  const addFolderToFilebar = useCallback(async (folderPath: string) => {
+  const addFolderToWorkspace = useCallback(async (folderPath: string) => {
     // Check if already open
     if (folders.some(f => f.path === folderPath)) {
       return
@@ -342,16 +342,22 @@ function App() {
     setFolders(prev => [...prev, { path: folderPath, isGitRepo: false }])
   }, [folders])
 
-  // Check if in git repo when file path changes and auto-add to filebar
+  // Check if in git repo when file path changes and auto-add to workspace.
+  // If inside a git repo, adds the git root; otherwise adds the containing folder.
   useEffect(() => {
     if (filePath) {
       window.electron.git.isRepo().then(setIsGitRepo)
 
-      // Auto-add the git root folder to filebar if not already there
       window.electron.explorer.getGitRoot(filePath).then((result: { success: boolean; gitRoot?: string | null }) => {
         if (result.success && result.gitRoot) {
           if (!folders.some(f => f.path === result.gitRoot)) {
             setFolders(prev => [...prev, { path: result.gitRoot!, isGitRepo: true }])
+          }
+        } else {
+          // Not inside a git repo — add the containing folder
+          const parentDir = filePath.substring(0, filePath.lastIndexOf('/'))
+          if (parentDir && !folders.some(f => f.path === parentDir)) {
+            setFolders(prev => [...prev, { path: parentDir, isGitRepo: false }])
           }
         }
       })
@@ -566,11 +572,11 @@ function App() {
     const unsubTheme = window.electron.menu.onToggleTheme(setTheme)
     const unsubSplit = window.electron.menu.onToggleSplitView(() => setShowSplitView(v => !v))
     const unsubPalette = window.electron.menu.onOpenCommandPalette(() => setShowCommandPalette(true))
-    const unsubExplorer = window.electron.menu.onToggleExplorer(() => setShowFilebar(v => !v))
-    const unsubMarkus = window.electron.markus.onToggleMarkus(() => setShowMarkusPanel(v => !v))
+    const unsubExplorer = window.electron.menu.onToggleWorkspace(() => setShowWorkspace(v => !v))
+    const unsubMarkus = window.electron.markus.onToggleAgent(() => setShowAgent(v => !v))
     const unsubOpenFolder = window.electron.explorer.onOpenFolder((data: { path: string }) => {
-      addFolderToFilebar(data.path)
-      setShowFilebar(true)
+      addFolderToWorkspace(data.path)
+      setShowWorkspace(true)
     })
 
     return () => {
@@ -581,7 +587,7 @@ function App() {
       unsubMarkus()
       unsubOpenFolder()
     }
-  }, [addFolderToFilebar])
+  }, [addFolderToWorkspace])
 
   // Handle Save As
   const handleSaveAs = useCallback(async () => {
@@ -605,10 +611,10 @@ function App() {
         e.preventDefault()
         handleSaveAs()
       }
-      // Ctrl+B - Toggle filebar
+      // Ctrl+B - Toggle workspace
       if ((e.metaKey || e.ctrlKey) && e.key === 'b') {
         e.preventDefault()
-        setShowFilebar(v => !v)
+        setShowWorkspace(v => !v)
       }
       // Ctrl+T - New tab
       if ((e.metaKey || e.ctrlKey) && e.key === 't') {
@@ -622,10 +628,10 @@ function App() {
           closeTab(activeTabId)
         }
       }
-      // Ctrl+M - Toggle Markus panel
+      // Ctrl+M - Toggle agent panel
       if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
         e.preventDefault()
-        setShowMarkusPanel(v => !v)
+        setShowAgent(v => !v)
       }
       // Ctrl+N - New window (handled by main process)
       // We don't prevent default here, let it go to the main process
@@ -635,13 +641,13 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleSaveAs, createNewTab, closeTab, activeTabId])
 
-  // Handle opening folder from filebar
+  // Handle opening folder from workspace
   const handleOpenFolder = useCallback(async () => {
     const result = await window.electron.explorer.openFolder()
     if (result.success && result.path) {
-      addFolderToFilebar(result.path)
+      addFolderToWorkspace(result.path)
     }
-  }, [addFolderToFilebar])
+  }, [addFolderToWorkspace])
 
   // Handle opening file from explorer
   const handleOpenFileFromExplorer = useCallback(async (openFilePath: string) => {
@@ -668,11 +674,11 @@ function App() {
         // Open supported files in the editor
         await window.electron.file.openPath(droppedPath)
       } else {
-        // For unsupported files or folders, try to add to filebar
+        // For unsupported files or folders, try to add to workspace
         const gitResult = await window.electron.explorer.getGitRoot(droppedPath)
         if (gitResult.success && gitResult.gitRoot) {
-          addFolderToFilebar(gitResult.gitRoot)
-          setShowFilebar(true)
+          addFolderToWorkspace(gitResult.gitRoot)
+          setShowWorkspace(true)
         }
       }
     }
@@ -689,7 +695,7 @@ function App() {
       document.removeEventListener('drop', handleDrop)
       document.removeEventListener('dragover', handleDragOver)
     }
-  }, [addFolderToFilebar])
+  }, [addFolderToWorkspace])
 
   const handleContentChange = useCallback((newContent: string, newWordCount: number, newCharCount: number) => {
     if (activeTabId) {
@@ -728,8 +734,8 @@ function App() {
     { id: 'openFolder', label: 'Open Folder', action: handleOpenFolder },
     { id: 'save', label: 'Save', shortcut: 'Ctrl+S', action: handleSave },
     { id: 'saveAs', label: 'Save As...', shortcut: 'Ctrl+Shift+S', action: handleSaveAs },
-    { id: 'filebar', label: 'Toggle Filebar', shortcut: 'Ctrl+B', action: () => setShowFilebar(v => !v) },
-    { id: 'markus', label: 'Toggle Markus', shortcut: 'Ctrl+M', action: () => setShowMarkusPanel(v => !v) },
+    { id: 'workspace', label: 'Toggle Workspace', shortcut: 'Ctrl+B', action: () => setShowWorkspace(v => !v) },
+    { id: 'agent', label: 'Toggle Agent', shortcut: 'Ctrl+M', action: () => setShowAgent(v => !v) },
     { id: 'split', label: 'Toggle Split View', shortcut: 'Ctrl+\\', action: () => setShowSplitView(v => !v) },
     { id: 'theme-light', label: 'Light Theme', action: () => setTheme('light') },
     { id: 'theme-dark', label: 'Dark Theme', action: () => setTheme('dark') },
@@ -757,25 +763,25 @@ function App() {
         onTabClick={switchToTab}
         onTabClose={closeTab}
         onNewTab={createNewTab}
-        showFilebar={showFilebar}
-        onToggleFilebar={() => setShowFilebar(v => !v)}
-        showMarkusPanel={showMarkusPanel}
-        onToggleMarkusPanel={() => setShowMarkusPanel(v => !v)}
+        showWorkspace={showWorkspace}
+        onToggleWorkspace={() => setShowWorkspace(v => !v)}
+        showAgent={showAgent}
+        onToggleAgent={() => setShowAgent(v => !v)}
         isVertical={isVertical}
       />
 
       <main className={cn("flex-1 flex overflow-hidden", isVertical && "flex-col")}>
-        {/* Filebar with multiple folder panels */}
-        {showFilebar && (
+        {/* Workspace with multiple folder panels */}
+        {showWorkspace && (
           <>
             <div
               className={cn(
                 "flex flex-col flex-shrink-0 overflow-hidden",
                 isVertical ? "border-b border-border" : "border-r border-border"
               )}
-              style={isVertical ? { height: filebarDimension } : { width: filebarDimension }}
+              style={isVertical ? { height: workspaceDimension } : { width: workspaceDimension }}
             >
-              <Filebar
+              <Workspace
                 folders={folders}
                 onFoldersChange={setFolders}
                 onOpenFile={handleOpenFileFromExplorer}
@@ -799,13 +805,13 @@ function App() {
                 e.preventDefault()
                 setIsResizing(true)
                 const startPos = isVertical ? e.clientY : e.clientX
-                const startSize = filebarDimension
+                const startSize = workspaceDimension
 
                 const handleMouseMove = (e: MouseEvent) => {
                   const currentPos = isVertical ? e.clientY : e.clientX
                   const [min, max] = isVertical ? [100, 400] : [150, 500]
                   const newSize = Math.max(min, Math.min(max, startSize + currentPos - startPos))
-                  setFilebarDimension(newSize)
+                  setWorkspaceDimension(newSize)
                 }
 
                 const handleMouseUp = () => {
@@ -846,32 +852,32 @@ function App() {
           </>
         )}
 
-        {/* Markus AI panel */}
-        {showMarkusPanel && (
+        {/* Agent widget */}
+        {showAgent && (
           <>
             {/* Resize handle */}
             <div
               className={cn(
                 "hover:bg-primary/50 active:bg-primary transition-colors",
                 isVertical ? "h-1 cursor-row-resize" : "w-1 cursor-col-resize",
-                isResizingMarkus && "bg-primary"
+                isResizingAgent && "bg-primary"
               )}
               onMouseDown={(e) => {
                 e.preventDefault()
-                setIsResizingMarkus(true)
+                setIsResizingAgent(true)
                 const startPos = isVertical ? e.clientY : e.clientX
-                const startSize = markusDimension
+                const startSize = agentDimension
 
                 const handleMouseMove = (e: MouseEvent) => {
                   // Markus panel resizes from the top/left edge, so subtract delta
                   const currentPos = isVertical ? e.clientY : e.clientX
                   const [min, max] = isVertical ? [150, 500] : [250, 600]
                   const newSize = Math.max(min, Math.min(max, startSize - (currentPos - startPos)))
-                  setMarkusDimension(newSize)
+                  setAgentDimension(newSize)
                 }
 
                 const handleMouseUp = () => {
-                  setIsResizingMarkus(false)
+                  setIsResizingAgent(false)
                   document.removeEventListener('mousemove', handleMouseMove)
                   document.removeEventListener('mouseup', handleMouseUp)
                 }
@@ -885,9 +891,9 @@ function App() {
                 "flex flex-col flex-shrink-0 overflow-hidden",
                 isVertical ? "border-t border-border" : "border-l border-border"
               )}
-              style={isVertical ? { height: markusDimension } : { width: markusDimension }}
+              style={isVertical ? { height: agentDimension } : { width: agentDimension }}
             >
-              <MarkusPanel
+              <AgentWidget
                 workspaceFolders={workspaceFolders}
                 openFiles={openFilePaths}
               />

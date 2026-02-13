@@ -128,7 +128,7 @@ export interface EventTransport {
 export interface ConversationInfo {
   id: string
   workspaceFolders: string[]
-  filebarId: string
+  workspaceId: string
   createdAt: number
   title?: string
 }
@@ -138,5 +138,5 @@ export interface ConversationInfo {
  */
 export interface CreateConversationRequest {
   workspaceFolders: string[]
-  filebarId?: string
+  workspaceId?: string
 }
