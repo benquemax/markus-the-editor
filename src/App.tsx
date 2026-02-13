@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { GitPanel } from './components/GitPanel'
-import { MarkdownPreview } from './components/MarkdownPreview'
+import { CodeEditor } from './components/FileViewer/CodeEditor'
 import { ConflictBanner } from './components/ConflictBanner'
 import { ConflictResolver } from './components/ConflictResolver'
 import { Workspace, FolderEntry } from './components/Workspace'
 import { TabBar, Tab, createUntitledTab, createFileTab, createBinaryFileTab } from './components/TabBar'
 import { FileViewer, FileViewerHandle } from './components/FileViewer'
 import { AgentWidget } from './components/Markus'
+import { SettingsView } from './components/SettingsView/SettingsView'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
 import { cn } from './lib/utils'
 import { useLayoutMode } from './lib/useLayoutMode'
+import { useCommentAuthor } from './lib/useCommentAuthor'
+import { onCommentToAgent } from './lib/commentAgentBridge'
 
 type Theme = 'light' | 'dark' | 'system'
 
@@ -42,6 +45,7 @@ function App() {
   const [workspaceWidth, setWorkspaceWidth] = useState(280)
   const [isResizing, setIsResizing] = useState(false)
   const [showAgent, setShowAgent] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [agentWidth, setAgentWidth] = useState(() =>
     Math.floor(window.innerWidth * 0.25)
   )
@@ -51,7 +55,11 @@ function App() {
     Math.floor(window.innerHeight * 0.25)
   )
   const { isVertical } = useLayoutMode()
+  const { author: commentAuthor } = useCommentAuthor()
   const editorRef = useRef<FileViewerHandle>(null)
+
+  // Timer for debounced code editor → ProseMirror sync in split view
+  const splitSyncTimerRef = useRef<ReturnType<typeof setTimeout>>()
 
   // Per-mode dimension helpers — vertical uses height, horizontal uses width
   const workspaceDimension = isVertical ? workspaceHeight : workspaceWidth
@@ -578,6 +586,15 @@ function App() {
       addFolderToWorkspace(data.path)
       setShowWorkspace(true)
     })
+    const unsubAddComment = window.electron.menu.onAddComment(() => {
+      editorRef.current?.addComment()
+    })
+    const unsubToggleComments = window.electron.menu.onToggleComments(() => {
+      editorRef.current?.toggleComments()
+    })
+    const unsubOpenSettings = window.electron.menu.onOpenSettings(() => {
+      setShowSettings(true)
+    })
 
     return () => {
       unsubTheme()
@@ -586,8 +603,18 @@ function App() {
       unsubExplorer()
       unsubMarkus()
       unsubOpenFolder()
+      unsubAddComment()
+      unsubToggleComments()
+      unsubOpenSettings()
     }
   }, [addFolderToWorkspace])
+
+  // Auto-open agent panel when @markus is mentioned in a comment
+  useEffect(() => {
+    return onCommentToAgent(() => {
+      setShowAgent(true)
+    })
+  }, [])
 
   // Handle Save As
   const handleSaveAs = useCallback(async () => {
@@ -632,6 +659,11 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === 'm') {
         e.preventDefault()
         setShowAgent(v => !v)
+      }
+      // Ctrl+, - Open settings
+      if ((e.metaKey || e.ctrlKey) && e.key === ',') {
+        e.preventDefault()
+        setShowSettings(true)
       }
       // Ctrl+N - New window (handled by main process)
       // We don't prevent default here, let it go to the main process
@@ -705,7 +737,36 @@ function App() {
     setCharCount(newCharCount)
   }, [activeTabId, updateTabContent])
 
+  /**
+   * Handles changes from the split view code editor.
+   * Updates tab content immediately (so save always works) and pushes
+   * to ProseMirror on a 300ms debounce to keep the WYSIWYG side in sync.
+   * The CodeEditor's hasTextFocus() guard prevents ProseMirror's
+   * re-serialized output from resetting the cursor while the user types.
+   */
+  const handleSplitCodeChange = useCallback((newContent: string) => {
+    if (activeTabId) {
+      updateTabContent(activeTabId, newContent)
+    }
+    if (splitSyncTimerRef.current) clearTimeout(splitSyncTimerRef.current)
+    splitSyncTimerRef.current = setTimeout(() => {
+      editorRef.current?.setContent(newContent)
+    }, 300)
+  }, [activeTabId, updateTabContent])
+
+  // Clean up split sync timer
+  useEffect(() => {
+    return () => {
+      if (splitSyncTimerRef.current) clearTimeout(splitSyncTimerRef.current)
+    }
+  }, [])
+
   const handleSave = useCallback(async () => {
+    // Flush any pending split view sync so ProseMirror has the latest content
+    if (splitSyncTimerRef.current) {
+      clearTimeout(splitSyncTimerRef.current)
+      splitSyncTimerRef.current = undefined
+    }
     const currentContent = editorRef.current?.getContent() || content
     if (filePath) {
       const result = await window.electron.file.save(currentContent)
@@ -740,6 +801,9 @@ function App() {
     { id: 'theme-light', label: 'Light Theme', action: () => setTheme('light') },
     { id: 'theme-dark', label: 'Dark Theme', action: () => setTheme('dark') },
     { id: 'theme-system', label: 'System Theme', action: () => setTheme('system') },
+    { id: 'addComment', label: 'Add Comment', shortcut: 'Ctrl+Alt+M', action: () => editorRef.current?.addComment() },
+    { id: 'toggleComments', label: 'Toggle Comments', action: () => editorRef.current?.toggleComments() },
+    { id: 'settings', label: 'Settings', shortcut: 'Ctrl+,', action: () => setShowSettings(true) },
     ...(isGitRepo ? [
       { id: 'git', label: 'Git Panel', action: () => setShowGitPanel(v => !v) },
     ] : [])
@@ -840,13 +904,19 @@ function App() {
                   tab={activeTab}
                   onContentChange={handleContentChange}
                   onSave={handleSave}
+                  commentAuthor={commentAuthor}
                 />
               </div>
             </div>
-            {/* Markdown preview split view (only for markdown files) */}
+            {/* Split view: raw markdown source in Monaco code editor */}
             {showSplitView && activeTab.fileType === 'markdown' && (
-              <div className="w-1/2 border-l border-border overflow-auto">
-                <MarkdownPreview content={content} />
+              <div className="w-1/2 border-l border-border overflow-hidden">
+                <CodeEditor
+                  content={content}
+                  filePath={filePath}
+                  onChange={handleSplitCodeChange}
+                  onSave={handleSave}
+                />
               </div>
             )}
           </>
@@ -923,6 +993,11 @@ function App() {
           onOpenChange={setShowGitPanel}
         />
       )}
+
+      <SettingsView
+        open={showSettings}
+        onOpenChange={setShowSettings}
+      />
 
       {/* Conflict resolver modal */}
       {activeConflict && (

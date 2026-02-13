@@ -4,6 +4,7 @@ import { undo, redo } from 'prosemirror-history'
 import { schema } from '../schema'
 import { EditorState, Transaction } from 'prosemirror-state'
 import { splitListItem, liftListItem, sinkListItem } from 'prosemirror-schema-list'
+import { addCommentCommand } from './commentPlugin'
 
 type Command = (state: EditorState, dispatch?: (tr: Transaction) => void) => boolean
 
@@ -49,6 +50,9 @@ export function buildKeymap(onSave?: () => void) {
   keys['Mod-i'] = toggleMark(schema.marks.em)
   keys['Mod-`'] = toggleMark(schema.marks.code)
   keys['Mod-Shift-x'] = toggleMark(schema.marks.strikethrough)
+
+  // Comment
+  keys['Mod-Alt-m'] = addCommentCommand
 
   // Headings
   keys['Mod-Alt-1'] = toggleHeading(1)

@@ -230,6 +230,19 @@
   padding-left: 0.875rem;
 }
 
+/* Comment highlight — yellow background for text with associated comment threads */
+.ProseMirror .comment-highlight {
+  @apply bg-yellow-200/60 dark:bg-yellow-500/30 cursor-pointer rounded-sm;
+  border-bottom: 2px solid hsl(48 96% 53%);
+}
+
+/* Hide comment highlights when the margin panel is collapsed */
+.comments-hidden .ProseMirror .comment-highlight {
+  @apply bg-transparent;
+  border-bottom: none;
+  cursor: text;
+}
+
 /* Thin styled scrollbars - used for filebar, file tree, and editors */
 .thin-scrollbar {
   scrollbar-width: thin;

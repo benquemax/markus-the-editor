@@ -115,7 +115,24 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
               { role: 'delete' as const },
               { type: 'separator' as const },
               { role: 'selectAll' as const }
-            ])
+            ]),
+        { type: 'separator' as const },
+        {
+          label: 'Add Comment',
+          accelerator: 'CmdOrCtrl+Alt+M',
+          click: () => window.webContents.send('menu:addComment')
+        },
+        ...(isMac
+          ? [{
+              label: 'Settings...',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => window.webContents.send('menu:openSettings')
+            }]
+          : [{
+              label: 'Settings',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => window.webContents.send('menu:openSettings')
+            }])
       ]
     },
     {
@@ -135,6 +152,10 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
           label: 'Toggle Split View',
           accelerator: 'CmdOrCtrl+\\',
           click: () => window.webContents.send('menu:toggleSplitView')
+        },
+        {
+          label: 'Toggle Comments',
+          click: () => window.webContents.send('menu:toggleComments')
         },
         { type: 'separator' },
         {

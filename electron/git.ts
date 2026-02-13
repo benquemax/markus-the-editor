@@ -356,4 +356,32 @@ export function setupGitHandlers(ipcMain: IpcMain, getCurrentFilePath: () => str
       return { success: false, error: String(error), hasConflicts: false }
     }
   })
+
+  // Get a git config value (e.g. user.name)
+  ipcMain.handle('git:getConfig', async (_, key: string) => {
+    try {
+      const git = getGitInstance()
+      if (!git) return null
+      const value = await git.raw(['config', '--get', key])
+      return value.trim()
+    } catch {
+      return null
+    }
+  })
+
+  // Get unique commit authors as collaborator suggestions
+  ipcMain.handle('git:getCollaborators', async () => {
+    try {
+      const git = getGitInstance()
+      if (!git) return []
+      const log = await git.raw(['shortlog', '-sn', '--all', '--no-merges'])
+      return log
+        .trim()
+        .split('\n')
+        .map(line => line.trim().replace(/^\d+\t/, ''))
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  })
 }

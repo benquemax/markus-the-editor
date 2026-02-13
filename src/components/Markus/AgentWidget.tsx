@@ -19,6 +19,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Settings, AlertCircle, Loader2, WifiOff } from 'lucide-react'
 import { ConversationHeader } from './ConversationHeader'
 import { AgentSelector } from './AgentSelector'
+import { onCommentToAgent } from '../../lib/commentAgentBridge'
 import MarkdownIt from 'markdown-it'
 
 // Initialize markdown parser
@@ -520,6 +521,15 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
     setBlockingToolCallId(null)
     setIsLoading(true)
   }, [blockingToolCallId])
+
+  // Listen for @markus mentions from the comment system
+  useEffect(() => {
+    return onCommentToAgent((payload) => {
+      if (!connectionRef.current || isLoading) return
+      const message = `> ${payload.highlightedText}\n\n${payload.commentText}`
+      handleSendMessage(message)
+    })
+  }, [handleSendMessage, isLoading])
 
   // Show server connection error
   if (!serverConnected) {

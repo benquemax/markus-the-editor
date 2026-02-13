@@ -176,6 +176,8 @@ export interface ElectronAPI {
       hasConflicts: boolean
       error?: string
     }>
+    getConfig: (key: string) => Promise<string | null>
+    getCollaborators: () => Promise<string[]>
     pullWithConflictDetection: () => Promise<{
       success: boolean
       content?: string
@@ -219,6 +221,9 @@ export interface ElectronAPI {
     onToggleSplitView: (callback: () => void) => () => void
     onOpenCommandPalette: (callback: () => void) => () => void
     onToggleWorkspace: (callback: () => void) => () => void
+    onAddComment: (callback: () => void) => () => void
+    onToggleComments: (callback: () => void) => () => void
+    onOpenSettings: (callback: () => void) => () => void
   }
   explorer: {
     readDirectory: (path: string) => Promise<{ success: boolean; entries?: FileEntry[]; error?: string }>
@@ -376,7 +381,9 @@ const api: ElectronAPI = {
     pullWithConflictDetection: () => ipcRenderer.invoke('git:pullWithConflictDetection'),
     readCurrentFile: () => ipcRenderer.invoke('git:readCurrentFile'),
     writeResolution: (content) => ipcRenderer.invoke('git:writeResolution', content),
-    abortMerge: () => ipcRenderer.invoke('git:abortMerge')
+    abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
+    getConfig: (key) => ipcRenderer.invoke('git:getConfig', key),
+    getCollaborators: () => ipcRenderer.invoke('git:getCollaborators')
   },
   ai: {
     getSettings: () => ipcRenderer.invoke('ai:getSettings'),
@@ -407,6 +414,21 @@ const api: ElectronAPI = {
       const handler = () => callback()
       ipcRenderer.on('menu:toggleWorkspace', handler)
       return () => ipcRenderer.removeListener('menu:toggleWorkspace', handler)
+    },
+    onAddComment: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:addComment', handler)
+      return () => ipcRenderer.removeListener('menu:addComment', handler)
+    },
+    onToggleComments: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:toggleComments', handler)
+      return () => ipcRenderer.removeListener('menu:toggleComments', handler)
+    },
+    onOpenSettings: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:openSettings', handler)
+      return () => ipcRenderer.removeListener('menu:openSettings', handler)
     }
   },
   explorer: {

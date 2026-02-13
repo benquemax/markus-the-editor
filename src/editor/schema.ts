@@ -284,6 +284,25 @@ const marks: Record<string, MarkSpec> = {
     toDOM() {
       return ['s', 0]
     }
+  },
+
+  // Inline comment highlight — marks text that has an associated comment thread.
+  // The commentId links to the thread data stored in the comment plugin state.
+  comment: {
+    attrs: { commentId: { default: '' } },
+    inclusive: false,
+    parseDOM: [{
+      tag: 'span[data-comment-id]',
+      getAttrs(node) {
+        return { commentId: (node as HTMLElement).getAttribute('data-comment-id') }
+      }
+    }],
+    toDOM(node) {
+      return ['span', {
+        'data-comment-id': node.attrs.commentId,
+        class: 'comment-highlight'
+      }, 0]
+    }
   }
 }
 

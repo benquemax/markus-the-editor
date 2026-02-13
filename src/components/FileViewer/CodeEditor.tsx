@@ -145,9 +145,12 @@ export const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(
     onChange(value || '')
   }, [onChange])
 
-  // Update content when tab changes
+  // Update content when tab changes or external source pushes new content.
+  // Skip if the editor has focus — the user is actively typing and we don't
+  // want setValue to reset cursor position (important for split view sync).
   useEffect(() => {
     if (editorRef.current) {
+      if (editorRef.current.hasTextFocus()) return
       const currentValue = editorRef.current.getValue()
       if (currentValue !== content) {
         editorRef.current.setValue(content)

@@ -23,6 +23,7 @@ const mockElectron = {
   },
   git: {
     isRepo: vi.fn().mockResolvedValue(false),
+    isRepoAtPath: vi.fn().mockResolvedValue(false),
     status: vi.fn().mockResolvedValue({
       current: 'main',
       tracking: 'origin/main',
@@ -38,7 +39,9 @@ const mockElectron = {
     pull: vi.fn().mockResolvedValue({ success: true }),
     commit: vi.fn().mockResolvedValue({ success: true }),
     push: vi.fn().mockResolvedValue({ success: true }),
-    add: vi.fn().mockResolvedValue({ success: true })
+    add: vi.fn().mockResolvedValue({ success: true }),
+    getConfig: vi.fn().mockResolvedValue(null),
+    getCollaborators: vi.fn().mockResolvedValue([])
   },
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined)
@@ -46,7 +49,10 @@ const mockElectron = {
   menu: {
     onToggleTheme: vi.fn().mockReturnValue(() => {}),
     onToggleSplitView: vi.fn().mockReturnValue(() => {}),
-    onOpenCommandPalette: vi.fn().mockReturnValue(() => {})
+    onOpenCommandPalette: vi.fn().mockReturnValue(() => {}),
+    onAddComment: vi.fn().mockReturnValue(() => {}),
+    onToggleComments: vi.fn().mockReturnValue(() => {}),
+    onOpenSettings: vi.fn().mockReturnValue(() => {})
   }
 }
 
