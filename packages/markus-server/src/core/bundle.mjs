@@ -7235,7 +7235,7 @@ function migrateConversation(old) {
   const mode = lastAssistant?.isPlan ? "planning" : "execution";
   return {
     id: old.id,
-    workspaceId: old.filebarId,
+    workspaceId: old.filebarId ?? old.workspaceId,
     title: old.title,
     mode,
     userMessages,
@@ -7383,7 +7383,7 @@ ${toolResultsContent}`,
   return {
     id: log.id,
     title: log.title,
-    workspaceId: log.filebarId,
+    workspaceId: log.workspaceId,
     messages,
     createdAt: log.createdAt,
     updatedAt: log.updatedAt
