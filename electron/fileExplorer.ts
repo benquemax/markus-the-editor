@@ -188,6 +188,53 @@ export function setupFileExplorerHandlers(ipcMain: IpcMain, getMainWindow: () =>
   })
 
   /**
+   * Saves binary data (base64-encoded) to a file path.
+   * Creates parent directories if they don't exist.
+   * Used by image drop to save images alongside the markdown document.
+   */
+  ipcMain.handle('explorer:saveBinaryFile', async (_, filePath: string, base64Data: string) => {
+    try {
+      const dir = path.dirname(filePath)
+      await fs.mkdir(dir, { recursive: true })
+      const buffer = Buffer.from(base64Data, 'base64')
+      await fs.writeFile(filePath, buffer)
+      return { success: true, path: filePath }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  /**
+   * Lists file names in a directory.
+   * Returns empty list if the directory doesn't exist yet (not an error).
+   * Used to determine the next sequential image number for auto-naming.
+   */
+  ipcMain.handle('explorer:listFiles', async (_, dirPath: string) => {
+    try {
+      const entries = await fs.readdir(dirPath)
+      return { success: true, files: entries }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return { success: true, files: [] }
+      }
+      return { success: false, error: String(error) }
+    }
+  })
+
+  /**
+   * Copies a file from source path to destination path.
+   * Used when dropping external files into file explorer folders.
+   */
+  ipcMain.handle('explorer:copyFile', async (_, sourcePath: string, destPath: string) => {
+    try {
+      await fs.copyFile(sourcePath, destPath)
+      return { success: true, path: destPath }
+    } catch (error) {
+      return { success: false, error: String(error) }
+    }
+  })
+
+  /**
    * Gets the diff hunks for a file compared to HEAD.
    * Returns line ranges that have been added or modified.
    */

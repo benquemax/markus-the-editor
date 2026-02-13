@@ -20,12 +20,16 @@ import { createSlashMenuPlugin, SlashMenuState, slashMenuPluginKey } from './plu
 import { createPlaceholderPlugin } from './plugins/placeholder'
 import { createDiffHighlightPlugin, setDiffHunks, DiffHunk } from './plugins/diffHighlight'
 import { createCommentPlugin, CommentPluginState, commentPluginKey, CommentPluginMeta, addCommentCommand } from './plugins/commentPlugin'
+import { createImageDropPlugin } from './plugins/imageDropPlugin'
 import { SlashMenu } from '../components/SlashMenu'
 import { CommentMargin } from '../components/CommentMargin/CommentMargin'
 import { ContextMenu, ContextMenuItem } from '../components/ContextMenu/ContextMenu'
+import { Lightbox } from '../components/Lightbox/Lightbox'
 import { createMermaidNodeView, MermaidNodeView } from './nodeviews/MermaidNodeView'
 import { reinitializeMermaidForTheme } from './nodeviews/mermaidRenderer'
+import { createImageBlockNodeView } from './nodeviews/ImageBlockView'
 import { extractComments, injectComments, CommentThread, CommentInjection } from '../lib/comments'
+import { extractImageBlocks, findImageByPlaceholder, ParsedImageBlock } from '../lib/imageBlock'
 
 export interface ProseMirrorEditorHandle {
   getContent: () => string
@@ -44,12 +48,63 @@ interface ProseMirrorEditorProps {
 }
 
 /**
- * Parses markdown with comment markers, returning a ProseMirror doc
- * with comment marks applied and the extracted thread data.
+ * Replaces placeholder paragraph nodes with image_block nodes in a doc.
+ * Walks the doc looking for paragraphs whose text matches an image placeholder,
+ * then swaps the paragraph for the corresponding image_block node.
+ */
+function replaceImagePlaceholders(
+  doc: ReturnType<typeof markdownParser.parse>,
+  images: ParsedImageBlock[]
+): ReturnType<typeof markdownParser.parse> {
+  if (!doc || images.length === 0) return doc
+
+  let tr = EditorState.create({ doc, schema }).tr
+  let offset = 0
+
+  doc.forEach((node, pos) => {
+    if (node.type.name !== 'paragraph') return
+    if (node.childCount !== 1 || !node.firstChild?.isText) return
+
+    const text = node.firstChild.text || ''
+    const img = findImageByPlaceholder(images, text.trim())
+    if (!img) return
+
+    const imageNode = schema.nodes.image_block.create({
+      src: img.src,
+      alt: img.alt,
+      title: img.title,
+      width: img.width,
+      align: img.align
+    })
+
+    const from = pos + offset
+    const to = from + node.nodeSize
+    tr = tr.replaceWith(from, to, imageNode)
+    // Adjust offset: image_block is 1 token, paragraph was node.nodeSize tokens
+    offset += imageNode.nodeSize - node.nodeSize
+  })
+
+  return tr.doc
+}
+
+/**
+ * Parses markdown with comment markers and image blocks, returning a
+ * ProseMirror doc with comment marks applied, image_block nodes inserted,
+ * and the extracted thread data.
  */
 function parseWithComments(content: string) {
-  const { cleaned, comments } = extractComments(content)
-  const doc = markdownParser.parse(cleaned)
+  // Step 1: Extract comments from markdown
+  const { cleaned: commentCleaned, comments } = extractComments(content)
+
+  // Step 2: Extract <img> block tags before markdown-it parsing
+  const { cleaned: imgCleaned, images } = extractImageBlocks(commentCleaned)
+
+  // Step 3: Parse the double-cleaned markdown
+  let doc = markdownParser.parse(imgCleaned)
+
+  // Step 4: Replace image placeholders with image_block nodes
+  doc = replaceImagePlaceholders(doc, images)
+
   if (!doc || comments.length === 0) {
     return { doc, threads: new Map<string, CommentThread>() }
   }
@@ -171,6 +226,10 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     // Ref to always have latest comment threads for serialization
     const commentThreadsRef = useRef<Map<string, CommentThread>>(new Map())
 
+    // Ref for filePath so plugins can access the latest value
+    const filePathRef = useRef(filePath)
+    filePathRef.current = filePath
+
     const [slashMenuState, setSlashMenuState] = useState<SlashMenuState>({
       active: false,
       query: '',
@@ -185,6 +244,10 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       showComments: false,
       contextMenu: null
     })
+
+    // Lightbox state — set by the image-lightbox CustomEvent from ImageBlockView
+    const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
+    const [lightboxAlt, setLightboxAlt] = useState('')
 
     // Keep threads ref in sync with plugin state
     const handleCommentStateChange = useCallback((state: CommentPluginState) => {
@@ -275,6 +338,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         gapCursor(),
         createSlashMenuPlugin(setSlashMenuState),
         createCommentPlugin(handleCommentStateChange),
+        createImageDropPlugin({ getFilePath: () => filePathRef.current ?? null }),
         createPlaceholderPlugin(),
         createDiffHighlightPlugin()
       ]
@@ -311,6 +375,9 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
             }
             // Return undefined to use default rendering for non-mermaid code blocks
             return undefined as unknown as MermaidNodeView
+          },
+          image_block: (node, view, getPos) => {
+            return createImageBlockNodeView(node, view, getPos, filePath ?? null)
           }
         }
       })
@@ -364,6 +431,17 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         viewRef.current = null
       }
     }, []) // Only run on mount
+
+    // Listen for lightbox events dispatched by ImageBlockView
+    useEffect(() => {
+      const handler = (e: Event) => {
+        const { src, alt } = (e as CustomEvent).detail
+        setLightboxSrc(src)
+        setLightboxAlt(alt || '')
+      }
+      window.addEventListener('image-lightbox', handler)
+      return () => window.removeEventListener('image-lightbox', handler)
+    }, [])
 
     // Load diff data when file path changes
     const loadDiffData = useCallback(async () => {
@@ -456,6 +534,14 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
             items={contextMenuItems}
             position={commentState.contextMenu}
             onClose={handleCloseContextMenu}
+          />
+        )}
+        {/* Image lightbox */}
+        {lightboxSrc && (
+          <Lightbox
+            src={lightboxSrc}
+            alt={lightboxAlt}
+            onClose={() => setLightboxSrc(null)}
           />
         )}
       </div>

@@ -53,6 +53,22 @@ const mockElectron = {
     onAddComment: vi.fn().mockReturnValue(() => {}),
     onToggleComments: vi.fn().mockReturnValue(() => {}),
     onOpenSettings: vi.fn().mockReturnValue(() => {})
+  },
+  explorer: {
+    readDirectory: vi.fn().mockResolvedValue({ success: true, entries: [] }),
+    openFolder: vi.fn().mockResolvedValue({ success: false, error: 'Cancelled' }),
+    getGitRoot: vi.fn().mockResolvedValue({ success: true, gitRoot: null }),
+    getGitStatus: vi.fn().mockResolvedValue({ success: true, files: [] }),
+    getFileDiff: vi.fn().mockResolvedValue({ success: true, hunks: [] }),
+    createFile: vi.fn().mockResolvedValue({ success: true, path: '/mock/file.md' }),
+    createDirectory: vi.fn().mockResolvedValue({ success: true, path: '/mock/dir' }),
+    saveBinaryFile: vi.fn().mockResolvedValue({ success: true, path: '/mock/image.jpg' }),
+    listFiles: vi.fn().mockResolvedValue({ success: true, files: [] }),
+    copyFile: vi.fn().mockResolvedValue({ success: true, path: '/mock/dest.jpg' }),
+    watchDirectory: vi.fn().mockResolvedValue({ success: true }),
+    unwatchDirectory: vi.fn().mockResolvedValue({ success: true }),
+    onDirectoryChanged: vi.fn().mockReturnValue(() => {}),
+    onOpenFolder: vi.fn().mockReturnValue(() => {})
   }
 }
 

@@ -383,6 +383,7 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
                 onOpenFile={handleOpenFileFromTree}
                 onNewFile={handleNewFile}
                 onNewFolder={handleNewFolder}
+                onFileDrop={() => refresh()}
               />
             )}
           </div>

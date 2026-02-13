@@ -371,3 +371,117 @@
 .mermaid-textarea {
   transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
 }
+
+/* ============================================================================
+ * Image Block NodeView
+ * Block-level images with hover toolbar for width/alignment controls.
+ * ============================================================================ */
+
+.image-block-view {
+  @apply relative my-4 rounded-lg overflow-hidden;
+  clear: both;
+}
+
+.image-block-view img {
+  @apply w-full h-auto rounded-lg cursor-pointer;
+  display: block;
+}
+
+.image-block-view.ProseMirror-selectednode {
+  @apply ring-2 ring-primary/40;
+}
+
+/* Width variants */
+.image-block-view[data-width="full"] {
+  width: 100%;
+  float: none !important;
+  clear: both;
+}
+
+.image-block-view[data-width="half"] {
+  width: 50%;
+}
+
+.image-block-view[data-width="quarter"] {
+  width: 25%;
+}
+
+/* Alignment variants (only meaningful for non-full width) */
+.image-block-view[data-align="left"] {
+  float: left;
+  margin-right: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.image-block-view[data-align="right"] {
+  float: right;
+  margin-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.image-block-view[data-align="center"] {
+  float: none;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* Hover toolbar */
+.image-block-toolbar {
+  @apply absolute top-2 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1 px-2 py-1 rounded-lg;
+  @apply bg-background/90 backdrop-blur-sm border border-border shadow-md;
+  @apply opacity-0 transition-opacity duration-200 pointer-events-none;
+}
+
+.image-block-view:hover .image-block-toolbar {
+  @apply opacity-100 pointer-events-auto;
+}
+
+.image-block-btn-group {
+  @apply flex items-center gap-0.5;
+}
+
+.image-block-btn {
+  @apply px-2 py-0.5 text-xs font-medium rounded transition-colors;
+  @apply text-muted-foreground hover:text-foreground hover:bg-accent;
+}
+
+.image-block-btn.active {
+  @apply bg-primary text-primary-foreground;
+}
+
+.image-block-btn.disabled {
+  @apply opacity-30 cursor-not-allowed;
+}
+
+.image-block-separator {
+  @apply text-border mx-1 text-xs;
+}
+
+/* Clearfix after image blocks to prevent float leaking */
+.ProseMirror > .image-block-view[data-width="full"] + *,
+.ProseMirror > p:has(+ .image-block-view) {
+  clear: none;
+}
+
+/* ============================================================================
+ * Lightbox
+ * Fullscreen image overlay with backdrop blur.
+ * ============================================================================ */
+
+.lightbox-overlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center cursor-pointer;
+  background-color: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+}
+
+.lightbox-close {
+  @apply absolute top-4 right-4 z-50 p-2 rounded-full transition-colors;
+  @apply text-white/80 hover:text-white hover:bg-white/10;
+}
+
+.lightbox-image {
+  @apply cursor-default rounded-lg shadow-2xl;
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+}

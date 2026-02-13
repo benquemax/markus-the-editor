@@ -233,6 +233,9 @@ export interface ElectronAPI {
     getFileDiff: (filePath: string) => Promise<{ success: boolean; hunks?: DiffHunk[]; error?: string }>
     createFile: (filePath: string) => Promise<{ success: boolean; path?: string; error?: string }>
     createDirectory: (dirPath: string) => Promise<{ success: boolean; path?: string; error?: string }>
+    saveBinaryFile: (filePath: string, base64Data: string) => Promise<{ success: boolean; path?: string; error?: string }>
+    listFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>
+    copyFile: (sourcePath: string, destPath: string) => Promise<{ success: boolean; path?: string; error?: string }>
     watchDirectory: (path: string) => Promise<{ success: boolean; error?: string }>
     unwatchDirectory: () => Promise<{ success: boolean; error?: string }>
     onDirectoryChanged: (callback: () => void) => () => void
@@ -439,6 +442,9 @@ const api: ElectronAPI = {
     getFileDiff: (filePath) => ipcRenderer.invoke('explorer:getFileDiff', filePath),
     createFile: (filePath) => ipcRenderer.invoke('explorer:createFile', filePath),
     createDirectory: (dirPath) => ipcRenderer.invoke('explorer:createDirectory', dirPath),
+    saveBinaryFile: (filePath, base64Data) => ipcRenderer.invoke('explorer:saveBinaryFile', filePath, base64Data),
+    listFiles: (dirPath) => ipcRenderer.invoke('explorer:listFiles', dirPath),
+    copyFile: (sourcePath, destPath) => ipcRenderer.invoke('explorer:copyFile', sourcePath, destPath),
     watchDirectory: (path) => ipcRenderer.invoke('explorer:watchDirectory', path),
     unwatchDirectory: () => ipcRenderer.invoke('explorer:unwatchDirectory'),
     onDirectoryChanged: (callback) => {

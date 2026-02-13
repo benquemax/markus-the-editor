@@ -6,6 +6,7 @@
  * For directories, shows new file/folder icons on hover.
  */
 
+import { useState } from 'react'
 import { ChevronRight, ChevronDown, Folder, File, FileText, Loader2, FilePlus, FolderPlus, Image, Film, Braces, Code } from 'lucide-react'
 import { cn } from '../../lib/utils'
 import { FileTreeNode, GitStatus } from '../../lib/fileTree'
@@ -20,6 +21,8 @@ interface FileTreeItemProps {
   onDoubleClick: (node: FileTreeNode) => void
   onNewFile?: (parentPath: string) => void
   onNewFolder?: (parentPath: string) => void
+  /** Called when an external file is dropped onto a directory */
+  onFileDrop?: (targetDirPath: string) => void
 }
 
 /**
@@ -72,10 +75,12 @@ export function FileTreeItem({
   onToggleExpand,
   onDoubleClick,
   onNewFile,
-  onNewFolder
+  onNewFolder,
+  onFileDrop
 }: FileTreeItemProps) {
   const isDirectory = node.type === 'directory'
   const paddingLeft = depth * 12 + 4
+  const [isDragOver, setIsDragOver] = useState(false)
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -114,6 +119,42 @@ export function FileTreeItem({
     onNewFolder?.(node.path)
   }
 
+  // Drag-and-drop handlers for directories — allows dropping external files
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!isDirectory) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(true)
+  }
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.stopPropagation()
+    setIsDragOver(false)
+  }
+
+  const handleDrop = async (e: React.DragEvent) => {
+    if (!isDirectory) return
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragOver(false)
+
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length === 0) return
+
+    // Copy each file into the target directory
+    for (const file of files) {
+      // Electron exposes the native file path on the File object
+      const sourcePath = (file as File & { path?: string }).path
+      if (!sourcePath) continue
+
+      const destPath = `${node.path}/${file.name}`
+      await window.electron.explorer.copyFile(sourcePath, destPath)
+    }
+
+    // Notify parent to refresh the tree
+    onFileDrop?.(node.path)
+  }
+
   const FileIcon = isDirectory ? Folder : getFileIcon(node.path)
   const gitStatusClass = node.gitStatus ? getGitStatusClass(node.gitStatus) : ''
 
@@ -121,11 +162,15 @@ export function FileTreeItem({
     <div
       className={cn(
         'group flex items-center gap-1 px-1 py-0.5 cursor-pointer hover:bg-accent text-sm select-none',
-        isSelected && 'bg-accent'
+        isSelected && 'bg-accent',
+        isDragOver && 'ring-2 ring-primary bg-primary/10'
       )}
       style={{ paddingLeft }}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       data-selected={isSelected}
     >
       {/* Expand/collapse arrow for directories */}
