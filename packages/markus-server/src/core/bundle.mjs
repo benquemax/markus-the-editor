@@ -865,7 +865,8 @@ RULES:
 1. Decompose complex tasks into subtasks
 2. Wait for results before continuing
 3. Summarize results for the user
-4. Never write markdown content directly`;
+4. Never write markdown content directly
+5. Encourage specialists to use mermaid diagrams when visualizing concepts, flows, or architecture`;
   }
   buildEditorPrompt() {
     return `You modify markdown files using SEARCH/REPLACE blocks.
@@ -886,7 +887,8 @@ RULES:
 2. Include enough context to make search unique
 3. Preserve indentation and formatting
 4. One edit per block, multiple blocks allowed
-5. For new files, use empty <search></search>`;
+5. For new files, use empty <search></search>
+6. Use mermaid code blocks for diagrams, flowcharts, and visual explanations when suitable`;
   }
   buildResearchPrompt() {
     return `You find information from files and web.
@@ -965,6 +967,7 @@ CAPABILITIES:
 - Suggest improvements
 - Find connections
 - Expand on ideas
+- Create mermaid diagrams for visual concepts
 
 FORMAT:
 <idea>
@@ -976,7 +979,8 @@ FORMAT:
 RULES:
 1. Generate multiple options
 2. Consider context
-3. Be specific, not generic`;
+3. Be specific, not generic
+4. Use mermaid code blocks for flowcharts, architecture diagrams, state machines, and other visual explanations`;
   }
 };
 var agentContextManager = new AgentContextManager();

@@ -22,6 +22,7 @@ A local, cross-platform WYSIWYG markdown editor built with Electron, React, and 
 - **Command Palette**: Quick access to all commands via `Ctrl+P`
 - **Themes**: Light, dark, and system theme support
 - **PDF Export**: Export your documents to PDF
+- **Mermaid Charts**: Native rendering of mermaid diagrams — flowcharts, sequence diagrams, and more display directly in the editor
 - **External File Watching**: Detects changes made to files outside the editor
 
 ## Installation
