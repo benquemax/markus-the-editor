@@ -62,6 +62,9 @@
 /* Editor specific styles */
 .ProseMirror {
   @apply outline-none min-h-full p-4;
+  /* NOTE: p-4 (1rem) is coupled with the progress gutter line's
+     left: -1rem offset. If you change this padding, update the
+     ::before rule on .progress-modified / .progress-added too. */
   white-space: pre-wrap;
   word-wrap: break-word;
 }
@@ -217,17 +220,11 @@
   @apply text-xs text-muted-foreground;
 }
 
-/* Editor diff decorations */
-.ProseMirror .diff-added {
-  @apply bg-green-500/10 border-l-2 border-green-500;
-  margin-left: -1rem;
-  padding-left: 0.875rem;
-}
-
+/* Editor diff decorations — kept intentionally minimal.  Change
+   indicators are provided by the progress plugin's gutter lines. */
+.ProseMirror .diff-added,
 .ProseMirror .diff-modified {
-  @apply bg-yellow-500/10 border-l-2 border-yellow-500;
-  margin-left: -1rem;
-  padding-left: 0.875rem;
+  /* no visual styling */
 }
 
 /* ==========================================================================
@@ -243,25 +240,43 @@
  * are read-only (contentEditable=false in the DOM, not via CSS).
  * ========================================================================== */
 
-/* --- Gutter lines (always visible) --------------------------------------- */
-/* Uses inset box-shadow instead of border-left so the 3px indicator line
-   doesn't shift content or break indentation (especially in lists).
-   The real border-left is forced to 0 to override prose blockquote borders. */
+/* --- Progress decoration resets ------------------------------------------ */
+/* No visual styling on modified/added blocks in normal mode — the
+   side-by-side view is the only change indicator.  border-left is
+   forced to 0 to prevent prose blockquote borders from appearing. */
 
-.progress-modified {
-  border-left: 0 !important;
-  box-shadow: inset 3px 0 0 #2ea043;
-  background: transparent !important;
-}
-
+.progress-modified,
 .progress-added {
+  position: relative;
   border-left: 0 !important;
-  box-shadow: inset 3px 0 0 #2ea043;
-  background: transparent !important;
 }
 
-/* Kill all nested left borders inside gutter-decorated blocks so that
-   nested blockquotes, lists, etc. don't produce extra indented lines. */
+/* Gutter indicator line — positioned at the left edge of the editor
+   viewport by pulling back over the ProseMirror p-4 (1rem) padding. */
+.progress-modified::before,
+.progress-added::before {
+  content: '';
+  position: absolute;
+  left: -1rem;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  pointer-events: none;
+}
+.progress-modified::before {
+  background: #c6a832;
+}
+.progress-added::before {
+  background: #2ea043;
+}
+
+/* Hide gutter lines in side-by-side mode — the committed widget on
+   the left already signals the change. */
+.ProseMirror.progress-active > .progress-modified::before,
+.ProseMirror.progress-active > .progress-added::before {
+  display: none;
+}
+
 :is(.progress-modified, .progress-added) blockquote,
 :is(.progress-modified, .progress-added) ul,
 :is(.progress-modified, .progress-added) ol {
@@ -301,19 +316,20 @@
 .ProseMirror.progress-active > .progress-committed {
   grid-column: 1 !important;
   border-right: 1px solid hsl(var(--border));
-  padding-right: 0.75rem;
+  box-shadow: none;
 }
 .ProseMirror.progress-active > .progress-modified {
   grid-column: 2 !important;
   box-shadow: none;
-  padding-left: 0.75rem;
+}
+.ProseMirror.progress-active > .progress-added {
+  box-shadow: none;
 }
 
 /* --- Committed widget (old version, left column) ------------------------- */
 
 .progress-committed {
   border-left: 0 !important;
-  box-shadow: inset 3px 0 0 #f85149;
   background: transparent !important;
   @apply opacity-60;
   pointer-events: auto;
@@ -349,7 +365,6 @@
 
 .progress-deleted {
   border-left: 0 !important;
-  box-shadow: inset 3px 0 0 #f85149;
   background: transparent !important;
   @apply opacity-60 my-1;
   pointer-events: auto;
