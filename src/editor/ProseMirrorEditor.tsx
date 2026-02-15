@@ -46,8 +46,8 @@ interface ProseMirrorEditorProps {
   onSave?: () => void
   /** Author name for new comments */
   commentAuthor?: string
-  /** When true, activates Progress mode (block-level git diff view) */
-  showProgress?: boolean
+  /** When true, activates Show Edits mode (block-level git diff view) */
+  showEdits?: boolean
 }
 
 /**
@@ -218,7 +218,7 @@ function serializeWithComments(
 }
 
 export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirrorEditorProps>(
-  ({ initialContent = '', filePath, onChange, onSave, commentAuthor = 'Anonymous', showProgress }, ref) => {
+  ({ initialContent = '', filePath, onChange, onSave, commentAuthor = 'Anonymous', showEdits }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
     // Use ref to always have access to the latest onSave callback
@@ -233,10 +233,10 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     const filePathRef = useRef(filePath)
     filePathRef.current = filePath
 
-    // Ref for showProgress so setContent can re-apply progress state
+    // Ref for showEdits so setContent can re-apply Show Edits state
     // after EditorState.create() resets all plugin states
-    const showProgressRef = useRef(showProgress)
-    showProgressRef.current = showProgress
+    const showEditsRef = useRef(showEdits)
+    showEditsRef.current = showEdits
 
     const [slashMenuState, setSlashMenuState] = useState<SlashMenuState>({
       active: false,
@@ -284,7 +284,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       // Re-apply showWidgets so side-by-side view survives content reloads
       // (e.g. tab switches). The committed doc is re-fetched separately
       // by the filePath effect.
-      if (showProgressRef.current) {
+      if (showEditsRef.current) {
         viewRef.current.dispatch(
           viewRef.current.state.tr.setMeta(progressPluginKey, {
             showWidgets: true
@@ -490,7 +490,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     }, [loadDiffData])
 
     // Fetches the committed version of the current file from git and updates
-    // the progress plugin.  Called on file open and after git commits.
+    // the edits plugin.  Called on file open and after git commits.
     const refreshCommittedDoc = useCallback(() => {
       const fp = filePathRef.current
       if (!viewRef.current || !fp) return
@@ -534,13 +534,13 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       return () => window.removeEventListener('git:committed', refreshCommittedDoc)
     }, [refreshCommittedDoc])
 
-    // Toggle side-by-side widgets and CSS Grid layout when showProgress changes.
+    // Toggle side-by-side widgets and CSS Grid layout when showEdits changes.
     // This only controls the widget layer; gutter lines are handled above.
     useEffect(() => {
       const view = viewRef.current
       if (!view) return
 
-      if (showProgress) {
+      if (showEdits) {
         view.dom.classList.add('progress-active')
         view.dispatch(
           view.state.tr.setMeta(progressPluginKey, {
@@ -555,7 +555,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
           } satisfies ProgressPluginMeta)
         )
       }
-    }, [showProgress])
+    }, [showEdits])
 
     // Handle slash menu item selection
     const handleSlashMenuSelect = useCallback((item: { action: (view: EditorView) => void }) => {

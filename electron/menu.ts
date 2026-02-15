@@ -159,9 +159,9 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
           click: () => window.webContents.send('menu:toggleComments')
         },
         {
-          label: 'Toggle Progress Mode',
+          label: 'Show Edits',
           accelerator: 'CmdOrCtrl+Shift+E',
-          click: () => window.webContents.send('menu:toggleProgress')
+          click: () => window.webContents.send('menu:toggleShowEdits')
         },
         { type: 'separator' },
         {

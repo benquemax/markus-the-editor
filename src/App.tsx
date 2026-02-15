@@ -34,7 +34,7 @@ function App() {
   const [charCount, setCharCount] = useState(0)
   const [theme, setTheme] = useState<Theme>('system')
   const [showSplitView, setShowSplitView] = useState(false)
-  const [showProgress, setShowProgress] = useState(false)
+  const [showEdits, setShowEdits] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [showGitPanel, setShowGitPanel] = useState(false)
   const [isGitRepo, setIsGitRepo] = useState(false)
@@ -610,7 +610,7 @@ function App() {
     const unsubToggleComments = window.electron.menu.onToggleComments(() => {
       editorRef.current?.toggleComments()
     })
-    const unsubProgress = window.electron.menu.onToggleProgress(() => setShowProgress(v => !v))
+    const unsubShowEdits = window.electron.menu.onToggleShowEdits(() => setShowEdits(v => !v))
     const unsubOpenSettings = window.electron.menu.onOpenSettings(() => {
       setShowSettings(true)
     })
@@ -624,7 +624,7 @@ function App() {
       unsubOpenFolder()
       unsubAddComment()
       unsubToggleComments()
-      unsubProgress()
+      unsubShowEdits()
       unsubOpenSettings()
     }
   }, [addFolderToWorkspace])
@@ -882,8 +882,8 @@ function App() {
                     setActiveConflict(conflict)
                   }
                 }}
-                showProgress={showProgress}
-                onToggleProgress={setShowProgress}
+                showEdits={showEdits}
+                onToggleShowEdits={setShowEdits}
               />
             </div>
             {/* Resize handle */}
@@ -933,7 +933,7 @@ function App() {
                   onContentChange={handleContentChange}
                   onSave={handleSave}
                   commentAuthor={commentAuthor}
-                  showProgress={showProgress}
+                  showEdits={showEdits}
                 />
               </div>
             </div>

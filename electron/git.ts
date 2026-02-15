@@ -371,7 +371,7 @@ export function setupGitHandlers(ipcMain: IpcMain, getCurrentFilePath: () => str
 
   /**
    * Returns file content at HEAD (the latest commit).
-   * Used by Progress mode to show block-level diffs against the committed version.
+   * Used by Show Edits mode to show block-level diffs against the committed version.
    * Returns content: null if the file doesn't exist in HEAD (new file).
    */
   ipcMain.handle('git:showFile', async (_, absoluteFilePath: string) => {

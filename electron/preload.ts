@@ -224,7 +224,7 @@ export interface ElectronAPI {
     onToggleWorkspace: (callback: () => void) => () => void
     onAddComment: (callback: () => void) => () => void
     onToggleComments: (callback: () => void) => () => void
-    onToggleProgress: (callback: () => void) => () => void
+    onToggleShowEdits: (callback: () => void) => () => void
     onOpenSettings: (callback: () => void) => () => void
   }
   explorer: {
@@ -431,10 +431,10 @@ const api: ElectronAPI = {
       ipcRenderer.on('menu:toggleComments', handler)
       return () => ipcRenderer.removeListener('menu:toggleComments', handler)
     },
-    onToggleProgress: (callback) => {
+    onToggleShowEdits: (callback) => {
       const handler = () => callback()
-      ipcRenderer.on('menu:toggleProgress', handler)
-      return () => ipcRenderer.removeListener('menu:toggleProgress', handler)
+      ipcRenderer.on('menu:toggleShowEdits', handler)
+      return () => ipcRenderer.removeListener('menu:toggleShowEdits', handler)
     },
     onOpenSettings: (callback) => {
       const handler = () => callback()

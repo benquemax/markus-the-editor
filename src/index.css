@@ -228,12 +228,12 @@
 }
 
 /* ==========================================================================
- * Progress — Git Diff Gutter Lines & Side-by-Side View
+ * Show Edits — Git Diff Gutter Lines & Side-by-Side View
  *
  * Two layers:
  * 1. Gutter lines (always visible when file has uncommitted changes):
  *    A single thin coloured left-border on modified/added blocks.
- * 2. Side-by-side widgets (only when Progress mode is toggled on):
+ * 2. Side-by-side widgets (only when Show Edits mode is toggled on):
  *    CSS Grid shows committed blocks beside modified blocks.
  *
  * Everything remains fully editable — only the committed widget elements
@@ -283,7 +283,7 @@
   border-left: 0 !important;
 }
 
-/* --- Side-by-side grid (only when Progress mode is on) ------------------- */
+/* --- Side-by-side grid (only when Show Edits mode is on) ----------------- */
 
 .ProseMirror.progress-active {
   display: grid;

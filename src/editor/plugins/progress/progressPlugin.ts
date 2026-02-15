@@ -8,7 +8,7 @@
  *    VS Code's gutter indicators.
  *
  * 2. **Side-by-side widgets** (only when `showWidgets` is true, i.e. the
- *    user toggles "Progress Mode") — read-only committed blocks shown
+ *    user toggles "Show Edits") — read-only committed blocks shown
  *    beside the current version in a CSS Grid layout, with word-level
  *    diff highlighting and Revert/Restore buttons.
  *

@@ -2,7 +2,7 @@
  * Block Diff Algorithm Tests
  *
  * Tests the core block-level diffing and word-level diffing logic
- * used by Progress mode.
+ * used by Show Edits mode.
  */
 
 import { describe, it, expect } from 'vitest'

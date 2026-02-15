@@ -53,7 +53,7 @@ const mockElectron = {
     onOpenCommandPalette: vi.fn().mockReturnValue(() => {}),
     onAddComment: vi.fn().mockReturnValue(() => {}),
     onToggleComments: vi.fn().mockReturnValue(() => {}),
-    onToggleProgress: vi.fn().mockReturnValue(() => {}),
+    onToggleShowEdits: vi.fn().mockReturnValue(() => {}),
     onOpenSettings: vi.fn().mockReturnValue(() => {})
   },
   explorer: {

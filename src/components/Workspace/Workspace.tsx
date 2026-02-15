@@ -39,11 +39,11 @@ interface WorkspaceProps {
   onOpenFile: (filePath: string) => void
   onConflict: (content: string) => void
   activeFilePath?: string | null
-  showProgress: boolean
-  onToggleProgress: (value: boolean) => void
+  showEdits: boolean
+  onToggleShowEdits: (value: boolean) => void
 }
 
-export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, onConflict, activeFilePath, showProgress, onToggleProgress }: WorkspaceProps) {
+export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, onConflict, activeFilePath, showEdits, onToggleShowEdits }: WorkspaceProps) {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [showLoadDialog, setShowLoadDialog] = useState(false)
   const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceListItem[]>([])
@@ -161,19 +161,19 @@ export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, o
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
         <div className="flex items-center gap-3">
           <button
-            onClick={() => onToggleProgress(false)}
+            onClick={() => onToggleShowEdits(false)}
             className={cn(
               "text-xs font-semibold uppercase tracking-wide transition-colors",
-              !showProgress ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+              !showEdits ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
             )}
           >
             Workspace
           </button>
           <button
-            onClick={() => onToggleProgress(true)}
+            onClick={() => onToggleShowEdits(true)}
             className={cn(
               "text-xs font-semibold uppercase tracking-wide transition-colors",
-              showProgress ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+              showEdits ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
             )}
           >
             Edits
@@ -207,7 +207,7 @@ export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, o
 
       {/* Content area */}
       <div className="flex-1 overflow-auto widget-scroll p-1">
-        {showProgress ? (
+        {showEdits ? (
           <EditsPanel
             folders={folders}
             onOpenFile={onOpenFile}
