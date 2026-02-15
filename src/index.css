@@ -274,12 +274,26 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 0;
+  /* row-gap replaces collapsed margins — 1rem matches the dominant mb-4
+     spacing used by most block elements (p, pre, ul, ol, table). */
+  row-gap: 1rem;
 }
 
-/* All elements span full width by default */
+/* Zero all block margins so spacing comes exclusively from row-gap.
+   The first child keeps margin-top for distance from the container edge. */
 .ProseMirror.progress-active > * {
   grid-column: 1 / -1;
+  margin-bottom: 0 !important;
 }
+.ProseMirror.progress-active > * + * {
+  margin-top: 0 !important;
+}
+
+/* Headings whose normal-flow margin-top exceeds the 1rem row-gap need
+   extra top margin to match the breathing room they get in normal mode.
+   h3 (mt-4 = 1rem) and below are already covered by the row-gap. */
+.ProseMirror.progress-active > * + h1 { margin-top: 0.5rem !important; }
+.ProseMirror.progress-active > * + h2 { margin-top: 0.25rem !important; }
 
 /* Committed widget → left column; modified block → right column.
    Gutter shadow is hidden on modified blocks in side-by-side mode since
@@ -288,15 +302,11 @@
   grid-column: 1 !important;
   border-right: 1px solid hsl(var(--border));
   padding-right: 0.75rem;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
 }
 .ProseMirror.progress-active > .progress-modified {
   grid-column: 2 !important;
   box-shadow: none;
   padding-left: 0.75rem;
-  margin-top: 0 !important;
-  margin-bottom: 0 !important;
 }
 
 /* --- Committed widget (old version, left column) ------------------------- */
