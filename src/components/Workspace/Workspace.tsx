@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect } from 'react'
 import { FolderPlus, Save, FolderOpen, Clock, Loader2, Folder } from 'lucide-react'
 import { FolderPanel } from './FolderPanel'
+import { EditsPanel } from './EditsPanel'
 import { SaveWorkspaceDialog } from './SaveWorkspaceDialog'
 import { LoadWorkspaceDialog } from './LoadWorkspaceDialog'
 import { cn } from '../../lib/utils'
@@ -38,9 +39,11 @@ interface WorkspaceProps {
   onOpenFile: (filePath: string) => void
   onConflict: (content: string) => void
   activeFilePath?: string | null
+  showProgress: boolean
+  onToggleProgress: (value: boolean) => void
 }
 
-export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, onConflict, activeFilePath }: WorkspaceProps) {
+export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, onConflict, activeFilePath, showProgress, onToggleProgress }: WorkspaceProps) {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [showLoadDialog, setShowLoadDialog] = useState(false)
   const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceListItem[]>([])
@@ -156,9 +159,26 @@ export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, o
     <div className="h-full flex flex-col bg-muted/20 overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Workspace
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onToggleProgress(false)}
+            className={cn(
+              "text-xs font-semibold uppercase tracking-wide transition-colors",
+              !showProgress ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+            )}
+          >
+            Workspace
+          </button>
+          <button
+            onClick={() => onToggleProgress(true)}
+            className={cn(
+              "text-xs font-semibold uppercase tracking-wide transition-colors",
+              showProgress ? "text-foreground" : "text-muted-foreground/60 hover:text-muted-foreground"
+            )}
+          >
+            Edits
+          </button>
+        </div>
         <div className="flex items-center gap-0.5">
           <button
             onClick={() => setShowSaveDialog(true)}
@@ -185,9 +205,15 @@ export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, o
         </div>
       </div>
 
-      {/* Folder panels */}
+      {/* Content area */}
       <div className="flex-1 overflow-auto widget-scroll p-1">
-        {folders.length === 0 ? (
+        {showProgress ? (
+          <EditsPanel
+            folders={folders}
+            onOpenFile={onOpenFile}
+            activeFilePath={activeFilePath}
+          />
+        ) : folders.length === 0 ? (
           <div className="flex flex-col h-full p-4">
             {/* Top section - Add folder */}
             <div className="flex flex-col items-center text-center mb-6">

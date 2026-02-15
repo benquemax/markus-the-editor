@@ -61,6 +61,8 @@ function App() {
   const { isVertical } = useLayoutMode()
   const { author: commentAuthor } = useCommentAuthor()
   const editorRef = useRef<FileViewerHandle>(null)
+  const activeTabIdRef = useRef(activeTabId)
+  activeTabIdRef.current = activeTabId
 
   // Timer for debounced code editor → ProseMirror sync in split view
   const splitSyncTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -123,6 +125,10 @@ function App() {
     // Check if file is already open
     const existingTab = tabs.find(t => t.filePath === openFilePath)
     if (existingTab) {
+      // Already the active tab — editor already has the content, no need
+      // to call setContent (which would reset all ProseMirror plugin states)
+      if (existingTab.id === activeTabIdRef.current) return
+
       setActiveTabId(existingTab.id)
       // Only set content for markdown files (ProseMirror needs this)
       if (existingTab.fileType === 'markdown') {
@@ -876,6 +882,8 @@ function App() {
                     setActiveConflict(conflict)
                   }
                 }}
+                showProgress={showProgress}
+                onToggleProgress={setShowProgress}
               />
             </div>
             {/* Resize handle */}

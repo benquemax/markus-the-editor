@@ -233,6 +233,11 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     const filePathRef = useRef(filePath)
     filePathRef.current = filePath
 
+    // Ref for showProgress so setContent can re-apply progress state
+    // after EditorState.create() resets all plugin states
+    const showProgressRef = useRef(showProgress)
+    showProgressRef.current = showProgress
+
     const [slashMenuState, setSlashMenuState] = useState<SlashMenuState>({
       active: false,
       query: '',
@@ -274,6 +279,18 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         plugins: viewRef.current.state.plugins
       })
       viewRef.current.updateState(newState)
+
+      // EditorState.create() resets all plugin states to initial values.
+      // Re-apply showWidgets so side-by-side view survives content reloads
+      // (e.g. tab switches). The committed doc is re-fetched separately
+      // by the filePath effect.
+      if (showProgressRef.current) {
+        viewRef.current.dispatch(
+          viewRef.current.state.tr.setMeta(progressPluginKey, {
+            showWidgets: true
+          } satisfies ProgressPluginMeta)
+        )
+      }
 
       // Load thread data into the comment plugin
       if (threads.size > 0) {
