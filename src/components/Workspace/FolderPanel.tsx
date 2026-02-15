@@ -183,13 +183,15 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
       setMessage('')
       setGitStatus('Changes saved')
       checkGitStatus()
+      refresh()
+      window.dispatchEvent(new Event('git:committed'))
       setTimeout(() => setGitStatus(null), 3000)
     } catch (err) {
       setGitError(String(err))
     } finally {
       setIsCommitting(false)
     }
-  }, [message, checkGitStatus])
+  }, [message, checkGitStatus, refresh])
 
   // Git push handler
   const handlePush = useCallback(async () => {
@@ -227,13 +229,15 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
 
       setGitStatus('Synced')
       checkGitStatus()
+      refresh()
+      window.dispatchEvent(new Event('git:committed'))
       setTimeout(() => setGitStatus(null), 3000)
     } catch (err) {
       setGitError(String(err))
     } finally {
       setIsPushing(false)
     }
-  }, [message, onConflict, checkGitStatus])
+  }, [message, onConflict, checkGitStatus, refresh])
 
   const isGitLoading = isCommitting || isPushing
 

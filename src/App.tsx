@@ -34,17 +34,21 @@ function App() {
   const [charCount, setCharCount] = useState(0)
   const [theme, setTheme] = useState<Theme>('system')
   const [showSplitView, setShowSplitView] = useState(false)
+  const [showProgress, setShowProgress] = useState(false)
   const [showCommandPalette, setShowCommandPalette] = useState(false)
   const [showGitPanel, setShowGitPanel] = useState(false)
   const [isGitRepo, setIsGitRepo] = useState(false)
   const [behindCount, setBehindCount] = useState(0)
   const [isPulling, setIsPulling] = useState(false)
   const [activeConflict, setActiveConflict] = useState<FileConflict | null>(null)
-  const [showWorkspace, setShowWorkspace] = useState(false)
+  // Default to visible — panels should only be hidden when launched with a file
+  // (see the launchedWithFile check in loadState below)
+  const [showWorkspace, setShowWorkspace] = useState(true)
   const [folders, setFolders] = useState<FolderEntry[]>([])
   const [workspaceWidth, setWorkspaceWidth] = useState(280)
   const [isResizing, setIsResizing] = useState(false)
-  const [showAgent, setShowAgent] = useState(false)
+  // Default to visible — same rationale as showWorkspace above
+  const [showAgent, setShowAgent] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
   const [agentWidth, setAgentWidth] = useState(() =>
     Math.floor(window.innerWidth * 0.25)
@@ -251,14 +255,11 @@ function App() {
         if (savedTheme) setTheme(savedTheme as Theme)
       })
 
-      // Only restore panel visibility when launched normally (not via file open)
-      if (!launchedWithFile) {
-        window.electron.store.get('showWorkspace').then((saved: unknown) => {
-          if (saved !== undefined && saved !== null) setShowWorkspace(saved as boolean)
-        })
-        window.electron.store.get('showAgent').then((saved: unknown) => {
-          if (saved !== undefined && saved !== null) setShowAgent(saved as boolean)
-        })
+      // When launched by opening a file (double-click, CLI), hide panels for
+      // a clean editing view.  Normal launch keeps the useState defaults (true).
+      if (launchedWithFile) {
+        setShowWorkspace(false)
+        setShowAgent(false)
       }
 
       window.electron.store.get('workspaceFolders').then((saved: unknown) => {
@@ -328,11 +329,20 @@ function App() {
       return
     }
 
+    // Adds the resolved path to the recent folders list in the store
+    const trackRecentFolder = async (resolvedPath: string) => {
+      const recent = ((await window.electron.store.get('recentFolders')) as string[] | null) ?? []
+      const filtered = recent.filter(f => f !== resolvedPath)
+      const updated = [resolvedPath, ...filtered].slice(0, 5)
+      window.electron.store.set('recentFolders', updated)
+    }
+
     // Check if it's a git repo
     const isGitRepo = await window.electron.git.isRepoAtPath(folderPath)
 
     if (isGitRepo) {
       setFolders(prev => [...prev, { path: folderPath, isGitRepo: true }])
+      trackRecentFolder(folderPath)
       return
     }
 
@@ -342,12 +352,14 @@ function App() {
       // Check if git root is already open
       if (!folders.some(f => f.path === gitRootResult.gitRoot)) {
         setFolders(prev => [...prev, { path: gitRootResult.gitRoot!, isGitRepo: true }])
+        trackRecentFolder(gitRootResult.gitRoot)
         return
       }
     }
 
     // Add the folder as-is
     setFolders(prev => [...prev, { path: folderPath, isGitRepo: false }])
+    trackRecentFolder(folderPath)
   }, [folders])
 
   // Check if in git repo when file path changes and auto-add to workspace.
@@ -592,6 +604,7 @@ function App() {
     const unsubToggleComments = window.electron.menu.onToggleComments(() => {
       editorRef.current?.toggleComments()
     })
+    const unsubProgress = window.electron.menu.onToggleProgress(() => setShowProgress(v => !v))
     const unsubOpenSettings = window.electron.menu.onOpenSettings(() => {
       setShowSettings(true)
     })
@@ -605,6 +618,7 @@ function App() {
       unsubOpenFolder()
       unsubAddComment()
       unsubToggleComments()
+      unsubProgress()
       unsubOpenSettings()
     }
   }, [addFolderToWorkspace])
@@ -624,6 +638,14 @@ function App() {
       markTabSaved(activeTabId, currentContent, result.filePath)
     }
   }, [content, activeTabId, markTabSaved])
+
+  // Handle opening folder from workspace
+  const handleOpenFolder = useCallback(async () => {
+    const result = await window.electron.explorer.openFolder()
+    if (result.success && result.path) {
+      addFolderToWorkspace(result.path)
+    }
+  }, [addFolderToWorkspace])
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -665,21 +687,18 @@ function App() {
         e.preventDefault()
         setShowSettings(true)
       }
+      // Ctrl+Shift+A - Add folder to workspace
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'A') {
+        e.preventDefault()
+        handleOpenFolder()
+      }
       // Ctrl+N - New window (handled by main process)
       // We don't prevent default here, let it go to the main process
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [handleSaveAs, createNewTab, closeTab, activeTabId])
-
-  // Handle opening folder from workspace
-  const handleOpenFolder = useCallback(async () => {
-    const result = await window.electron.explorer.openFolder()
-    if (result.success && result.path) {
-      addFolderToWorkspace(result.path)
-    }
-  }, [addFolderToWorkspace])
+  }, [handleSaveAs, createNewTab, closeTab, activeTabId, handleOpenFolder])
 
   // Handle opening file from explorer
   const handleOpenFileFromExplorer = useCallback(async (openFilePath: string) => {
@@ -848,6 +867,7 @@ function App() {
               <Workspace
                 folders={folders}
                 onFoldersChange={setFolders}
+                onAddFolder={addFolderToWorkspace}
                 onOpenFile={handleOpenFileFromExplorer}
                 activeFilePath={filePath}
                 onConflict={(conflictContent) => {
@@ -905,6 +925,7 @@ function App() {
                   onContentChange={handleContentChange}
                   onSave={handleSave}
                   commentAuthor={commentAuthor}
+                  showProgress={showProgress}
                 />
               </div>
             </div>

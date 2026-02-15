@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react'
-import { FolderPlus, Save, FolderOpen, Clock, Loader2 } from 'lucide-react'
+import { FolderPlus, Save, FolderOpen, Clock, Loader2, Folder } from 'lucide-react'
 import { FolderPanel } from './FolderPanel'
 import { SaveWorkspaceDialog } from './SaveWorkspaceDialog'
 import { LoadWorkspaceDialog } from './LoadWorkspaceDialog'
@@ -19,6 +19,13 @@ interface WorkspaceListItem {
   folderCount: number
 }
 
+/**
+ * Extracts the display name from a folder path (last segment).
+ */
+function folderDisplayName(folderPath: string): string {
+  return folderPath.split('/').filter(Boolean).pop() || folderPath
+}
+
 export interface FolderEntry {
   path: string
   isGitRepo: boolean
@@ -27,29 +34,34 @@ export interface FolderEntry {
 interface WorkspaceProps {
   folders: FolderEntry[]
   onFoldersChange: (folders: FolderEntry[]) => void
+  onAddFolder: (folderPath: string) => void
   onOpenFile: (filePath: string) => void
   onConflict: (content: string) => void
   activeFilePath?: string | null
 }
 
-export function Workspace({ folders, onFoldersChange, onOpenFile, onConflict, activeFilePath }: WorkspaceProps) {
+export function Workspace({ folders, onFoldersChange, onAddFolder, onOpenFile, onConflict, activeFilePath }: WorkspaceProps) {
   const [showSaveDialog, setShowSaveDialog] = useState(false)
   const [showLoadDialog, setShowLoadDialog] = useState(false)
   const [recentWorkspaces, setRecentWorkspaces] = useState<WorkspaceListItem[]>([])
+  const [recentFolders, setRecentFolders] = useState<string[]>([])
   const [isLoadingRecent, setIsLoadingRecent] = useState(false)
   const [loadingFileName, setLoadingFileName] = useState<string | null>(null)
 
   /**
-   * Fetches the list of saved workspaces for the "Latest workspaces" section.
+   * Fetches recent workspaces and recent folders for the empty state.
    */
-  const fetchRecentWorkspaces = useCallback(async () => {
+  const fetchRecentItems = useCallback(async () => {
     setIsLoadingRecent(true)
     try {
-      const result = await window.electron.workspace.list()
-      if (result.success) {
-        // Show up to 5 most recent workspaces
-        setRecentWorkspaces(result.workspaces.slice(0, 5))
+      const [workspaceResult, foldersResult] = await Promise.all([
+        window.electron.workspace.list(),
+        window.electron.store.get('recentFolders') as Promise<string[] | null>
+      ])
+      if (workspaceResult.success) {
+        setRecentWorkspaces(workspaceResult.workspaces.slice(0, 5))
       }
+      setRecentFolders((foldersResult ?? []).slice(0, 5))
     } catch {
       // Silently fail - this is a convenience feature
     } finally {
@@ -57,12 +69,12 @@ export function Workspace({ folders, onFoldersChange, onOpenFile, onConflict, ac
     }
   }, [])
 
-  // Load recent workspaces when component mounts and when folders become empty
+  // Load recent items when component mounts and when folders become empty
   useEffect(() => {
     if (folders.length === 0) {
-      fetchRecentWorkspaces()
+      fetchRecentItems()
     }
-  }, [folders.length, fetchRecentWorkspaces])
+  }, [folders.length, fetchRecentItems])
 
   /**
    * Loads a workspace from the recent list.
@@ -191,61 +203,100 @@ export function Workspace({ folders, onFoldersChange, onOpenFile, onConflict, ac
               </button>
             </div>
 
-            {/* Latest workspaces section */}
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-2">
-                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Latest Workspaces
-                </span>
+            {isLoadingRecent ? (
+              <div className="flex items-center justify-center py-4">
+                <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               </div>
+            ) : (
+              <div className="flex-1 space-y-4">
+                {/* Recent folders section */}
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Folder className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Recent Folders
+                    </span>
+                  </div>
 
-              {isLoadingRecent ? (
-                <div className="flex items-center justify-center py-4">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  {recentFolders.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">
+                      No recent folders yet
+                    </p>
+                  ) : (
+                    <div className="space-y-1 self-stretch">
+                      {recentFolders.map((folderPath) => (
+                        <button
+                          key={folderPath}
+                          onClick={() => onAddFolder(folderPath)}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left',
+                            'hover:bg-accent/50 transition-colors'
+                          )}
+                        >
+                          <Folder className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm truncate">{folderDisplayName(folderPath)}</div>
+                            <div className="text-xs text-muted-foreground truncate">{folderPath}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ) : recentWorkspaces.length === 0 ? (
-                <p className="text-xs text-muted-foreground py-2">
-                  No saved workspaces yet
-                </p>
-              ) : (
-                <div className="space-y-1">
-                  {recentWorkspaces.map((workspace) => (
+
+                {/* Latest workspaces section */}
+                <div className="flex flex-col items-center">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      Latest Workspaces
+                    </span>
+                  </div>
+
+                  {recentWorkspaces.length === 0 ? (
+                    <p className="text-xs text-muted-foreground py-2">
+                      No saved workspaces yet
+                    </p>
+                  ) : (
+                    <div className="space-y-1 self-stretch">
+                      {recentWorkspaces.map((workspace) => (
+                        <button
+                          key={workspace.fileName}
+                          onClick={() => handleQuickLoadWorkspace(workspace.fileName)}
+                          disabled={loadingFileName !== null}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left',
+                            'hover:bg-accent/50 transition-colors',
+                            'disabled:opacity-50 disabled:cursor-not-allowed'
+                          )}
+                        >
+                          <FolderOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm truncate">{workspace.name}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {workspace.folderCount} {workspace.folderCount === 1 ? 'folder' : 'folders'}
+                            </div>
+                          </div>
+                          {loadingFileName === workspace.fileName && (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Show all workspaces button */}
+                  {recentWorkspaces.length > 0 && (
                     <button
-                      key={workspace.fileName}
-                      onClick={() => handleQuickLoadWorkspace(workspace.fileName)}
-                      disabled={loadingFileName !== null}
-                      className={cn(
-                        'w-full flex items-center gap-2 px-2 py-1.5 rounded text-left',
-                        'hover:bg-accent/50 transition-colors',
-                        'disabled:opacity-50 disabled:cursor-not-allowed'
-                      )}
+                      onClick={() => setShowLoadDialog(true)}
+                      className="self-stretch mt-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded text-center"
                     >
-                      <FolderOpen className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm truncate">{workspace.name}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {workspace.folderCount} {workspace.folderCount === 1 ? 'folder' : 'folders'}
-                        </div>
-                      </div>
-                      {loadingFileName === workspace.fileName && (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-                      )}
+                      Show all workspaces...
                     </button>
-                  ))}
+                  )}
                 </div>
-              )}
-
-              {/* Show all workspaces button */}
-              {recentWorkspaces.length > 0 && (
-                <button
-                  onClick={() => setShowLoadDialog(true)}
-                  className="w-full mt-2 px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-accent/50 rounded text-center"
-                >
-                  Show all workspaces...
-                </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="flex flex-col h-full">

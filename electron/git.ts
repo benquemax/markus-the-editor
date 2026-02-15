@@ -369,6 +369,32 @@ export function setupGitHandlers(ipcMain: IpcMain, getCurrentFilePath: () => str
     }
   })
 
+  /**
+   * Returns file content at HEAD (the latest commit).
+   * Used by Progress mode to show block-level diffs against the committed version.
+   * Returns content: null if the file doesn't exist in HEAD (new file).
+   */
+  ipcMain.handle('git:showFile', async (_, absoluteFilePath: string) => {
+    try {
+      const git = getGitInstance()
+      if (!git) return { success: false, error: 'No file open' }
+
+      // Resolve repo root to compute the relative path git expects
+      const repoRoot = (await git.revparse(['--show-toplevel'])).trim()
+      const relativePath = path.relative(repoRoot, absoluteFilePath)
+
+      const content = await git.show([`HEAD:${relativePath}`])
+      return { success: true, content }
+    } catch (error) {
+      // File doesn't exist in HEAD — it's a new, uncommitted file
+      const msg = String(error)
+      if (msg.includes('does not exist') || msg.includes('exists on disk') || msg.includes('fatal: path')) {
+        return { success: true, content: null }
+      }
+      return { success: false, error: msg }
+    }
+  })
+
   // Get unique commit authors as collaborator suggestions
   ipcMain.handle('git:getCollaborators', async () => {
     try {

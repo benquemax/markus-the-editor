@@ -69,6 +69,7 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
         },
         {
           label: 'Open Folder...',
+          accelerator: 'CmdOrCtrl+Shift+A',
           click: callbacks.onOpenFolder
         },
         {
@@ -156,6 +157,11 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
         {
           label: 'Toggle Comments',
           click: () => window.webContents.send('menu:toggleComments')
+        },
+        {
+          label: 'Toggle Progress Mode',
+          accelerator: 'CmdOrCtrl+Shift+P',
+          click: () => window.webContents.send('menu:toggleProgress')
         },
         { type: 'separator' },
         {

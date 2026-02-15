@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs/promises'
 import { existsSync } from 'fs'
 import { createMenu } from './menu'
-import { setupFileWatcher, stopFileWatcher } from './fileWatcher'
+import { setupFileWatcher, stopFileWatcher, markInternalSave } from './fileWatcher'
 import { setupGitHandlers } from './git'
 import { setupAiHandlers } from './ai'
 import { setupFileExplorerHandlers } from './fileExplorer'
@@ -22,6 +22,7 @@ let pendingFilePath: string | null = null
 const store = new Store({
   defaults: {
     recentFiles: [] as string[],
+    recentFolders: [] as string[],
     windowBounds: { width: 1200, height: 800 },
     theme: 'system' as 'light' | 'dark' | 'system',
     aiMerge: {
@@ -287,6 +288,7 @@ ipcMain.handle('file:save', async (_, content: string) => {
   if (!currentFilePath) return { success: false, error: 'No file path' }
 
   try {
+    markInternalSave()
     stopFileWatcher()
     await fs.writeFile(currentFilePath, content, 'utf-8')
     setupFileWatcher(currentFilePath, mainWindow!)

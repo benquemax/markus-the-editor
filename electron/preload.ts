@@ -176,6 +176,7 @@ export interface ElectronAPI {
       hasConflicts: boolean
       error?: string
     }>
+    showFile: (filePath: string) => Promise<{ success: boolean; content?: string | null; error?: string }>
     getConfig: (key: string) => Promise<string | null>
     getCollaborators: () => Promise<string[]>
     pullWithConflictDetection: () => Promise<{
@@ -223,6 +224,7 @@ export interface ElectronAPI {
     onToggleWorkspace: (callback: () => void) => () => void
     onAddComment: (callback: () => void) => () => void
     onToggleComments: (callback: () => void) => () => void
+    onToggleProgress: (callback: () => void) => () => void
     onOpenSettings: (callback: () => void) => () => void
   }
   explorer: {
@@ -385,6 +387,7 @@ const api: ElectronAPI = {
     readCurrentFile: () => ipcRenderer.invoke('git:readCurrentFile'),
     writeResolution: (content) => ipcRenderer.invoke('git:writeResolution', content),
     abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
+    showFile: (filePath) => ipcRenderer.invoke('git:showFile', filePath),
     getConfig: (key) => ipcRenderer.invoke('git:getConfig', key),
     getCollaborators: () => ipcRenderer.invoke('git:getCollaborators')
   },
@@ -427,6 +430,11 @@ const api: ElectronAPI = {
       const handler = () => callback()
       ipcRenderer.on('menu:toggleComments', handler)
       return () => ipcRenderer.removeListener('menu:toggleComments', handler)
+    },
+    onToggleProgress: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:toggleProgress', handler)
+      return () => ipcRenderer.removeListener('menu:toggleProgress', handler)
     },
     onOpenSettings: (callback) => {
       const handler = () => callback()

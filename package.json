@@ -12,7 +12,7 @@
     "dev": "node packages/markus-server/scripts/build-server.mjs && vite",
     "build": "node packages/markus-server/scripts/build-server.mjs && tsc && vite build",
     "electron": "electron .",
-    "dev:full": "node packages/markus-server/scripts/build-server.mjs && rm -f dist-electron/main.js dist-electron/preload.js && concurrently -k \"vite\" \"wait-on http://localhost:5173 && wait-on dist-electron/main.js && electron .\"",
+    "dev:full": "node packages/markus-server/scripts/build-server.mjs && rm -f dist-electron/main.js dist-electron/preload.js && concurrently -k \"vite\" \"wait-on http://localhost:5173 && wait-on dist-electron/main.js && VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
     "dist": "npm run build && electron-builder --publish=never",
     "lint": "eslint src electron --ext .ts,.tsx",
     "test": "vitest run",

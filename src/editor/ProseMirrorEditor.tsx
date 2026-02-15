@@ -30,6 +30,7 @@ import { reinitializeMermaidForTheme } from './nodeviews/mermaidRenderer'
 import { createImageBlockNodeView } from './nodeviews/ImageBlockView'
 import { extractComments, injectComments, CommentThread, CommentInjection } from '../lib/comments'
 import { extractImageBlocks, findImageByPlaceholder, ParsedImageBlock } from '../lib/imageBlock'
+import { createProgressPlugin, progressPluginKey, ProgressPluginMeta } from './plugins/progress/progressPlugin'
 
 export interface ProseMirrorEditorHandle {
   getContent: () => string
@@ -45,6 +46,8 @@ interface ProseMirrorEditorProps {
   onSave?: () => void
   /** Author name for new comments */
   commentAuthor?: string
+  /** When true, activates Progress mode (block-level git diff view) */
+  showProgress?: boolean
 }
 
 /**
@@ -215,7 +218,7 @@ function serializeWithComments(
 }
 
 export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirrorEditorProps>(
-  ({ initialContent = '', filePath, onChange, onSave, commentAuthor = 'Anonymous' }, ref) => {
+  ({ initialContent = '', filePath, onChange, onSave, commentAuthor = 'Anonymous', showProgress }, ref) => {
     const editorRef = useRef<HTMLDivElement>(null)
     const viewRef = useRef<EditorView | null>(null)
     // Use ref to always have access to the latest onSave callback
@@ -340,7 +343,8 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         createCommentPlugin(handleCommentStateChange),
         createImageDropPlugin({ getFilePath: () => filePathRef.current ?? null }),
         createPlaceholderPlugin(),
-        createDiffHighlightPlugin()
+        createDiffHighlightPlugin(),
+        createProgressPlugin()
       ]
 
       const state = EditorState.create({
@@ -467,6 +471,74 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     useEffect(() => {
       loadDiffData()
     }, [loadDiffData])
+
+    // Fetches the committed version of the current file from git and updates
+    // the progress plugin.  Called on file open and after git commits.
+    const refreshCommittedDoc = useCallback(() => {
+      const fp = filePathRef.current
+      if (!viewRef.current || !fp) return
+
+      window.electron.git.showFile(fp).then((result: { success: boolean; content?: string | null }) => {
+        if (!viewRef.current) return
+
+        let committedDoc: ReturnType<typeof markdownParser.parse> | null = null
+        if (result.success && result.content != null) {
+          committedDoc = parseWithComments(result.content).doc
+        }
+
+        viewRef.current.dispatch(
+          viewRef.current.state.tr.setMeta(progressPluginKey, {
+            committedDoc
+          } satisfies ProgressPluginMeta)
+        )
+      })
+    }, [])
+
+    // Fetch committed doc when file path changes (for always-on gutter lines).
+    useEffect(() => {
+      if (!viewRef.current) return
+
+      if (filePath) {
+        refreshCommittedDoc()
+      } else {
+        // No file path — clear committed doc and all gutter decorations
+        viewRef.current.dispatch(
+          viewRef.current.state.tr.setMeta(progressPluginKey, {
+            committedDoc: null
+          } satisfies ProgressPluginMeta)
+        )
+      }
+    }, [filePath, refreshCommittedDoc])
+
+    // Re-fetch committed doc after a git commit so gutter lines and
+    // side-by-side widgets reflect the new HEAD.
+    useEffect(() => {
+      window.addEventListener('git:committed', refreshCommittedDoc)
+      return () => window.removeEventListener('git:committed', refreshCommittedDoc)
+    }, [refreshCommittedDoc])
+
+    // Toggle side-by-side widgets and CSS Grid layout when showProgress changes.
+    // This only controls the widget layer; gutter lines are handled above.
+    useEffect(() => {
+      const view = viewRef.current
+      if (!view) return
+
+      if (showProgress) {
+        view.dom.classList.add('progress-active')
+        view.dispatch(
+          view.state.tr.setMeta(progressPluginKey, {
+            showWidgets: true
+          } satisfies ProgressPluginMeta)
+        )
+      } else {
+        view.dom.classList.remove('progress-active')
+        view.dispatch(
+          view.state.tr.setMeta(progressPluginKey, {
+            showWidgets: false
+          } satisfies ProgressPluginMeta)
+        )
+      }
+    }, [showProgress])
 
     // Handle slash menu item selection
     const handleSlashMenuSelect = useCallback((item: { action: (view: EditorView) => void }) => {

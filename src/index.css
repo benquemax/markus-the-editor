@@ -230,6 +230,144 @@
   padding-left: 0.875rem;
 }
 
+/* ==========================================================================
+ * Progress — Git Diff Gutter Lines & Side-by-Side View
+ *
+ * Two layers:
+ * 1. Gutter lines (always visible when file has uncommitted changes):
+ *    A single thin coloured left-border on modified/added blocks.
+ * 2. Side-by-side widgets (only when Progress mode is toggled on):
+ *    CSS Grid shows committed blocks beside modified blocks.
+ *
+ * Everything remains fully editable — only the committed widget elements
+ * are read-only (contentEditable=false in the DOM, not via CSS).
+ * ========================================================================== */
+
+/* --- Gutter lines (always visible) --------------------------------------- */
+/* Uses inset box-shadow instead of border-left so the 3px indicator line
+   doesn't shift content or break indentation (especially in lists).
+   The real border-left is forced to 0 to override prose blockquote borders. */
+
+.progress-modified {
+  border-left: 0 !important;
+  box-shadow: inset 3px 0 0 #2ea043;
+  background: transparent !important;
+}
+
+.progress-added {
+  border-left: 0 !important;
+  box-shadow: inset 3px 0 0 #2ea043;
+  background: transparent !important;
+}
+
+/* Kill all nested left borders inside gutter-decorated blocks so that
+   nested blockquotes, lists, etc. don't produce extra indented lines. */
+:is(.progress-modified, .progress-added) blockquote,
+:is(.progress-modified, .progress-added) ul,
+:is(.progress-modified, .progress-added) ol {
+  border-left: 0 !important;
+}
+
+/* --- Side-by-side grid (only when Progress mode is on) ------------------- */
+
+.ProseMirror.progress-active {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 0;
+}
+
+/* All elements span full width by default */
+.ProseMirror.progress-active > * {
+  grid-column: 1 / -1;
+}
+
+/* Committed widget → left column; modified block → right column.
+   Gutter shadow is hidden on modified blocks in side-by-side mode since
+   the committed widget on the left already signals the change. */
+.ProseMirror.progress-active > .progress-committed {
+  grid-column: 1 !important;
+  border-right: 1px solid hsl(var(--border));
+  padding-right: 0.75rem;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.ProseMirror.progress-active > .progress-modified {
+  grid-column: 2 !important;
+  box-shadow: none;
+  padding-left: 0.75rem;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* --- Committed widget (old version, left column) ------------------------- */
+
+.progress-committed {
+  border-left: 0 !important;
+  box-shadow: inset 3px 0 0 #f85149;
+  background: transparent !important;
+  @apply opacity-60;
+  pointer-events: auto;
+  position: relative;
+  overflow: visible;
+}
+
+/* Zero out first-child margin so content aligns with the modified block */
+.progress-committed > :first-child {
+  margin-top: 0 !important;
+}
+
+/* Revert button is absolutely positioned so it never affects the
+   committed widget's flow height.  In grid mode it jumps one column
+   width to the right to land at the top-right of the edited block. */
+.progress-committed .progress-revert-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 10;
+  margin: 0;
+  opacity: 1;
+}
+.ProseMirror.progress-active .progress-committed .progress-revert-btn {
+  right: calc(-100% + 8px);
+}
+
+.progress-committed blockquote {
+  border-left: 0 !important;
+}
+
+/* --- Deleted block widget (full width) ----------------------------------- */
+
+.progress-deleted {
+  border-left: 0 !important;
+  box-shadow: inset 3px 0 0 #f85149;
+  background: transparent !important;
+  @apply opacity-60 my-1;
+  pointer-events: auto;
+}
+
+.progress-deleted blockquote {
+  border-left: 0 !important;
+}
+
+/* --- Revert / Restore buttons -------------------------------------------- */
+
+.progress-revert-btn,
+.progress-restore-btn {
+  @apply text-xs rounded cursor-pointer transition-colors font-medium;
+  @apply border border-border bg-background hover:bg-accent;
+  pointer-events: auto;
+}
+
+.progress-revert-btn {
+  @apply w-6 h-6 flex items-center justify-center p-0 text-sm leading-none;
+  @apply text-orange-600 dark:text-orange-400 border-orange-500/30 hover:bg-orange-500/10;
+}
+
+.progress-restore-btn {
+  @apply text-blue-600 dark:text-blue-400 border-blue-500/30 hover:bg-blue-500/10;
+  @apply mt-2;
+}
+
 /* Comment highlight — yellow background for text with associated comment threads */
 .ProseMirror .comment-highlight {
   @apply bg-yellow-200/60 dark:bg-yellow-500/30 cursor-pointer rounded-sm;

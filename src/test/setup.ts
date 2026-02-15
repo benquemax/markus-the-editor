@@ -40,6 +40,7 @@ const mockElectron = {
     commit: vi.fn().mockResolvedValue({ success: true }),
     push: vi.fn().mockResolvedValue({ success: true }),
     add: vi.fn().mockResolvedValue({ success: true }),
+    showFile: vi.fn().mockResolvedValue({ success: true, content: null }),
     getConfig: vi.fn().mockResolvedValue(null),
     getCollaborators: vi.fn().mockResolvedValue([])
   },
@@ -52,6 +53,7 @@ const mockElectron = {
     onOpenCommandPalette: vi.fn().mockReturnValue(() => {}),
     onAddComment: vi.fn().mockReturnValue(() => {}),
     onToggleComments: vi.fn().mockReturnValue(() => {}),
+    onToggleProgress: vi.fn().mockReturnValue(() => {}),
     onOpenSettings: vi.fn().mockReturnValue(() => {})
   },
   explorer: {
