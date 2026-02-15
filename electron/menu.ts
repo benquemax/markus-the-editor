@@ -160,7 +160,7 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
         },
         {
           label: 'Toggle Progress Mode',
-          accelerator: 'CmdOrCtrl+Shift+P',
+          accelerator: 'CmdOrCtrl+Shift+E',
           click: () => window.webContents.send('menu:toggleProgress')
         },
         { type: 'separator' },
