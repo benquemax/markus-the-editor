@@ -1,21 +1,21 @@
 /**
- * SaveFilebarDialog Component
+ * SaveWorkspaceDialog Component
  *
- * Simple modal for saving the current filebar configuration.
- * Prompts for a name and saves to ~/.config/markus-the-editor/filebars/
+ * Simple modal for saving the current workspace configuration.
+ * Prompts for a name and saves to ~/.config/markus-the-editor/workspaces/
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '../../lib/utils'
 
-interface SaveFilebarDialogProps {
+interface SaveWorkspaceDialogProps {
   isOpen: boolean
   onClose: () => void
   onSave: (name: string) => Promise<void>
 }
 
-export function SaveFilebarDialog({ isOpen, onClose, onSave }: SaveFilebarDialogProps) {
+export function SaveWorkspaceDialog({ isOpen, onClose, onSave }: SaveWorkspaceDialogProps) {
   const [name, setName] = useState('')
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -72,7 +72,7 @@ export function SaveFilebarDialog({ isOpen, onClose, onSave }: SaveFilebarDialog
       <div className="relative bg-background border border-border rounded-lg shadow-lg w-full max-w-sm mx-4">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold">Save Filebar</h2>
+          <h2 className="text-sm font-semibold">Save Workspace</h2>
           <button
             onClick={onClose}
             className="p-1 hover:bg-accent rounded"
@@ -85,7 +85,7 @@ export function SaveFilebarDialog({ isOpen, onClose, onSave }: SaveFilebarDialog
         <div className="p-4 space-y-4">
           <div>
             <label className="block text-sm text-muted-foreground mb-1.5">
-              Filebar name
+              Workspace name
             </label>
             <input
               ref={inputRef}

@@ -205,6 +205,7 @@ export function FileExplorer({ rootPath, onOpenFolder, onOpenFile }: FileExplore
             onOpenFile={handleOpenFileFromTree}
             onNewFile={handleNewFile}
             onNewFolder={handleNewFolder}
+            onFileDrop={() => refresh()}
           />
         )}
       </div>

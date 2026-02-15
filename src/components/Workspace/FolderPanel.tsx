@@ -183,13 +183,15 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
       setMessage('')
       setGitStatus('Changes saved')
       checkGitStatus()
+      refresh()
+      window.dispatchEvent(new Event('git:committed'))
       setTimeout(() => setGitStatus(null), 3000)
     } catch (err) {
       setGitError(String(err))
     } finally {
       setIsCommitting(false)
     }
-  }, [message, checkGitStatus])
+  }, [message, checkGitStatus, refresh])
 
   // Git push handler
   const handlePush = useCallback(async () => {
@@ -227,13 +229,15 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
 
       setGitStatus('Synced')
       checkGitStatus()
+      refresh()
+      window.dispatchEvent(new Event('git:committed'))
       setTimeout(() => setGitStatus(null), 3000)
     } catch (err) {
       setGitError(String(err))
     } finally {
       setIsPushing(false)
     }
-  }, [message, onConflict, checkGitStatus])
+  }, [message, onConflict, checkGitStatus, refresh])
 
   const isGitLoading = isCommitting || isPushing
 
@@ -365,7 +369,7 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
           )}
 
           {/* File tree */}
-          <div className="max-h-64 overflow-auto filebar-scroll">
+          <div className="max-h-64 overflow-auto widget-scroll">
             {isLoading && tree.length === 0 ? (
               <div className="flex items-center justify-center py-4">
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
@@ -383,6 +387,7 @@ export function FolderPanel({ path, isGitRepo, onOpenFile, onRemove, onConflict,
                 onOpenFile={handleOpenFileFromTree}
                 onNewFile={handleNewFile}
                 onNewFolder={handleNewFolder}
+                onFileDrop={() => refresh()}
               />
             )}
           </div>

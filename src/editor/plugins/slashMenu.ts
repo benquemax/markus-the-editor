@@ -3,6 +3,7 @@ import { EditorView } from 'prosemirror-view'
 import { setBlockType, wrapIn } from 'prosemirror-commands'
 import { schema } from '../schema'
 import { wrapInList } from 'prosemirror-schema-list'
+import { getNextImageNumber, buildImagePath } from '../../lib/imageBlock'
 
 export interface SlashMenuItem {
   id: string
@@ -126,6 +127,67 @@ const slashMenuItems: SlashMenuItem[] = [
       )
       dispatch(tr.replaceSelectionWith(node).scrollIntoView())
       view.focus()
+    }
+  },
+  {
+    id: 'image',
+    label: 'Image',
+    description: 'Insert image from file',
+    icon: '🖼',
+    action: (view) => {
+      // Use a hidden file input to trigger the native file picker
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*'
+      input.onchange = async () => {
+        const file = input.files?.[0]
+        if (!file) return
+
+        // Need the document's file path to save the image next to it
+        const filePath = await window.electron.file.getCurrentPath()
+        if (!filePath) {
+          await window.electron.dialog.showMessage({
+            type: 'info',
+            title: 'Save Document First',
+            message: 'Please save the document before adding images. Images are stored in a folder next to the document.',
+            buttons: ['OK']
+          })
+          return
+        }
+
+        // Read file as base64
+        const reader = new FileReader()
+        reader.onload = async () => {
+          const base64 = (reader.result as string).split(',')[1]
+          const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+
+          const docFileName = filePath.substring(filePath.lastIndexOf('/') + 1)
+          const baseName = docFileName.replace(/\.md$/i, '')
+
+          const { dirPath } = buildImagePath(filePath, ext, 1)
+          const listResult = await window.electron.explorer.listFiles(dirPath)
+          const existingFiles = listResult.success && listResult.files ? listResult.files : []
+          const nextNum = getNextImageNumber(existingFiles, baseName)
+
+          const imagePath = buildImagePath(filePath, ext, nextNum)
+          const saveResult = await window.electron.explorer.saveBinaryFile(imagePath.filePath, base64)
+
+          if (!saveResult.success) return
+
+          const imageNode = schema.nodes.image_block.create({
+            src: imagePath.relativeSrc,
+            alt: file.name.replace(/\.[^.]+$/, ''),
+            width: 'full',
+            align: 'center'
+          })
+
+          const { state, dispatch } = view
+          dispatch(state.tr.replaceSelectionWith(imageNode).scrollIntoView())
+          view.focus()
+        }
+        reader.readAsDataURL(file)
+      }
+      input.click()
     }
   }
 ]

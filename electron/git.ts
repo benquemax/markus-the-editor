@@ -356,4 +356,58 @@ export function setupGitHandlers(ipcMain: IpcMain, getCurrentFilePath: () => str
       return { success: false, error: String(error), hasConflicts: false }
     }
   })
+
+  // Get a git config value (e.g. user.name)
+  ipcMain.handle('git:getConfig', async (_, key: string) => {
+    try {
+      const git = getGitInstance()
+      if (!git) return null
+      const value = await git.raw(['config', '--get', key])
+      return value.trim()
+    } catch {
+      return null
+    }
+  })
+
+  /**
+   * Returns file content at HEAD (the latest commit).
+   * Used by Show Edits mode to show block-level diffs against the committed version.
+   * Returns content: null if the file doesn't exist in HEAD (new file).
+   */
+  ipcMain.handle('git:showFile', async (_, absoluteFilePath: string) => {
+    try {
+      const git = getGitInstance()
+      if (!git) return { success: false, error: 'No file open' }
+
+      // Resolve repo root to compute the relative path git expects
+      const repoRoot = (await git.revparse(['--show-toplevel'])).trim()
+      const relativePath = path.relative(repoRoot, absoluteFilePath)
+
+      const content = await git.show([`HEAD:${relativePath}`])
+      return { success: true, content }
+    } catch (error) {
+      // File doesn't exist in HEAD — it's a new, uncommitted file
+      const msg = String(error)
+      if (msg.includes('does not exist') || msg.includes('exists on disk') || msg.includes('fatal: path')) {
+        return { success: true, content: null }
+      }
+      return { success: false, error: msg }
+    }
+  })
+
+  // Get unique commit authors as collaborator suggestions
+  ipcMain.handle('git:getCollaborators', async () => {
+    try {
+      const git = getGitInstance()
+      if (!git) return []
+      const log = await git.raw(['shortlog', '-sn', '--all', '--no-merges'])
+      return log
+        .trim()
+        .split('\n')
+        .map(line => line.trim().replace(/^\d+\t/, ''))
+        .filter(Boolean)
+    } catch {
+      return []
+    }
+  })
 }

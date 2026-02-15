@@ -4,7 +4,7 @@
  * Exports all Markus-related components for easy importing.
  */
 
-export { MarkusPanel } from './MarkusPanel'
+export { AgentWidget } from './AgentWidget'
 export { ChatMessage } from './ChatMessage'
 export { ChatInput } from './ChatInput'
 export { ToolCallDisplay } from './ToolCallDisplay'

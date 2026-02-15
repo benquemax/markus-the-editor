@@ -52,6 +52,35 @@ describe('ProseMirror Schema', () => {
       expect(image.attrs.title).toBe('Test Title')
     })
 
+    it('should have image_block node with layout attributes', () => {
+      expect(schema.nodes.image_block).toBeDefined()
+      const imgBlock = schema.nodes.image_block.create({
+        src: 'doc/doc-1.jpg',
+        alt: 'Photo',
+        width: 'half',
+        align: 'left'
+      })
+      expect(imgBlock.attrs.src).toBe('doc/doc-1.jpg')
+      expect(imgBlock.attrs.alt).toBe('Photo')
+      expect(imgBlock.attrs.width).toBe('half')
+      expect(imgBlock.attrs.align).toBe('left')
+    })
+
+    it('should have image_block default attributes', () => {
+      const imgBlock = schema.nodes.image_block.create({ src: 'img.jpg' })
+      expect(imgBlock.attrs.width).toBe('full')
+      expect(imgBlock.attrs.align).toBe('center')
+      expect(imgBlock.attrs.alt).toBe('')
+      expect(imgBlock.attrs.title).toBeNull()
+    })
+
+    it('image_block should be block group and atom', () => {
+      const spec = schema.nodes.image_block.spec
+      expect(spec.group).toBe('block')
+      expect(spec.atom).toBe(true)
+      expect(spec.draggable).toBe(true)
+    })
+
     it('should have hard_break node', () => {
       expect(schema.nodes.hard_break).toBeDefined()
     })

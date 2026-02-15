@@ -24,7 +24,7 @@ export interface MarkusSettings {
 export interface MarkusConversation {
   id: string
   title: string
-  filebarId: string
+  workspaceId: string
   messages: MarkusChatMessage[]
   createdAt: number
   updatedAt: number

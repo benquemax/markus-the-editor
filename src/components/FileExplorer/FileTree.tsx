@@ -17,6 +17,8 @@ interface FileTreeProps {
   onOpenFile: (node: FileTreeNode) => void
   onNewFile?: (parentPath: string) => void
   onNewFolder?: (parentPath: string) => void
+  /** Called when an external file is dropped onto a directory */
+  onFileDrop?: (targetDirPath: string) => void
 }
 
 /**
@@ -45,7 +47,8 @@ export function FileTree({
   onToggleExpand,
   onOpenFile,
   onNewFile,
-  onNewFolder
+  onNewFolder,
+  onFileDrop
 }: FileTreeProps) {
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -126,6 +129,7 @@ export function FileTree({
           onDoubleClick={onOpenFile}
           onNewFile={onNewFile}
           onNewFolder={onNewFolder}
+          onFileDrop={onFileDrop}
         />
         {node.type === 'directory' && node.isExpanded && node.children && (
           renderNodes(node.children, depth + 1)

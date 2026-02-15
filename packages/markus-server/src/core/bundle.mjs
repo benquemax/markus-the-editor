@@ -115,8 +115,7 @@ function convertToAnthropicFormat(messages) {
   };
 }
 function parseAnthropicResponse(data) {
-  if (!data.content)
-    return "";
+  if (!data.content) return "";
   return data.content.filter((block) => block.type === "text" && block.text).map((block) => block.text).join("");
 }
 function parseMdJson(content) {
@@ -695,8 +694,7 @@ var AgentContextManager = class {
    */
   trimContext(agent, neededTokens) {
     const context = this.contexts.get(agent);
-    if (!context)
-      return;
+    if (!context) return;
     const targetTokens = context.maxContextTokens - neededTokens;
     const systemPromptTokens = estimateTokens(context.systemPrompt);
     while (context.messages.length > 0 && context.currentTokens > targetTokens) {
@@ -867,7 +865,8 @@ RULES:
 1. Decompose complex tasks into subtasks
 2. Wait for results before continuing
 3. Summarize results for the user
-4. Never write markdown content directly`;
+4. Never write markdown content directly
+5. Encourage specialists to use mermaid diagrams when visualizing concepts, flows, or architecture`;
   }
   buildEditorPrompt() {
     return `You modify markdown files using SEARCH/REPLACE blocks.
@@ -888,7 +887,8 @@ RULES:
 2. Include enough context to make search unique
 3. Preserve indentation and formatting
 4. One edit per block, multiple blocks allowed
-5. For new files, use empty <search></search>`;
+5. For new files, use empty <search></search>
+6. Use mermaid code blocks for diagrams, flowcharts, and visual explanations when suitable`;
   }
   buildResearchPrompt() {
     return `You find information from files and web.
@@ -967,6 +967,7 @@ CAPABILITIES:
 - Suggest improvements
 - Find connections
 - Expand on ideas
+- Create mermaid diagrams for visual concepts
 
 FORMAT:
 <idea>
@@ -978,7 +979,8 @@ FORMAT:
 RULES:
 1. Generate multiple options
 2. Consider context
-3. Be specific, not generic`;
+3. Be specific, not generic
+4. Use mermaid code blocks for flowcharts, architecture diagrams, state machines, and other visual explanations`;
   }
 };
 var agentContextManager = new AgentContextManager();
@@ -1372,8 +1374,7 @@ var AgentRouter = class {
    * Process the task queue.
    */
   async processQueue() {
-    if (this.processing)
-      return;
+    if (this.processing) return;
     this.processing = true;
     try {
       while (this.taskQueue.getPendingCount() > 0) {
@@ -1403,8 +1404,7 @@ var AgentRouter = class {
     const grouped = /* @__PURE__ */ new Map();
     const allTasks = this.taskQueue.getAll();
     for (const task of allTasks) {
-      if (task.status !== "pending")
-        continue;
+      if (task.status !== "pending") continue;
       const existing = grouped.get(task.agent) || [];
       existing.push(task);
       grouped.set(task.agent, existing);
@@ -1425,8 +1425,7 @@ var AgentRouter = class {
    */
   cancelTask(taskId) {
     const task = this.taskQueue.get(taskId);
-    if (!task)
-      return;
+    if (!task) return;
     if (task.status === "pending") {
       task.status = "cancelled";
       this.eventBus.emit("task:updated", { task });
@@ -1919,8 +1918,7 @@ var BaseEmbeddingProvider = class {
       normB += b[i] * b[i];
     }
     const magnitude = Math.sqrt(normA) * Math.sqrt(normB);
-    if (magnitude === 0)
-      return 0;
+    if (magnitude === 0) return 0;
     return dotProduct / magnitude;
   }
 };
@@ -1973,8 +1971,7 @@ var TFIDFEmbeddingProvider = class extends BaseEmbeddingProvider {
     const maxTf = Math.max(...tf.values(), 1);
     for (const [term, freq] of tf.entries()) {
       const vocabIndex = this.vocabulary.get(term);
-      if (vocabIndex === void 0)
-        continue;
+      if (vocabIndex === void 0) continue;
       const normalizedTf = freq / maxTf;
       const df = this.documentFrequency.get(term) || 1;
       const idf = Math.log((this.totalDocuments + 1) / (df + 1)) + 1;
@@ -2128,8 +2125,7 @@ var VectorStore = class {
    */
   needsReindex(filePath, contentHash) {
     const entry = this.fileIndex.get(filePath);
-    if (!entry)
-      return true;
+    if (!entry) return true;
     return entry.hash !== contentHash;
   }
   /**
@@ -2149,8 +2145,7 @@ var VectorStore = class {
    * Index chunks from a file.
    */
   async indexChunks(chunks, fileContent) {
-    if (chunks.length === 0)
-      return;
+    if (chunks.length === 0) return;
     const filePath = chunks[0].filePath;
     const fileHash = this.hashContent(fileContent);
     if (!this.needsReindex(filePath, fileHash)) {
@@ -2230,8 +2225,7 @@ var VectorStore = class {
     const fileSet = new Set(filePaths);
     const results = [];
     for (const doc of this.documents.values()) {
-      if (!fileSet.has(doc.filePath))
-        continue;
+      if (!fileSet.has(doc.filePath)) continue;
       const score = this.embedder.cosineSimilarity(
         queryEmbedding.vector,
         doc.embedding
@@ -2281,8 +2275,7 @@ var VectorStore = class {
    * Save to disk.
    */
   async save() {
-    if (!this.storeDir || !this.isDirty)
-      return;
+    if (!this.storeDir || !this.isDirty) return;
     await fs.mkdir(this.storeDir, { recursive: true });
     const docsPath = path2.join(this.storeDir, "documents.json");
     const docsData = Array.from(this.documents.values());
@@ -2296,8 +2289,7 @@ var VectorStore = class {
    * Load from disk.
    */
   async load() {
-    if (!this.storeDir)
-      return false;
+    if (!this.storeDir) return false;
     const docsPath = path2.join(this.storeDir, "documents.json");
     const indexPath = path2.join(this.storeDir, "file_index.json");
     if (!existsSync2(docsPath) || !existsSync2(indexPath)) {
@@ -2465,8 +2457,7 @@ var IndexManager = class {
    * Collect files to index from a directory.
    */
   async collectFiles(dir, files, depth = 0) {
-    if (depth > 10)
-      return;
+    if (depth > 10) return;
     const entries = await fs2.readdir(dir, { withFileTypes: true });
     for (const entry of entries) {
       if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") {
@@ -2487,8 +2478,7 @@ var IndexManager = class {
    * Index a single file.
    */
   async indexFile(filePath) {
-    if (!this.vectorStore)
-      return;
+    if (!this.vectorStore) return;
     const content = await fs2.readFile(filePath, "utf-8");
     const chunks = chunkDocument(content, filePath, {
       maxChunkSize: this.settings.chunking.maxChunkSize,
@@ -2500,8 +2490,7 @@ var IndexManager = class {
    * Remove a file from the index.
    */
   removeFile(filePath) {
-    if (!this.vectorStore)
-      return;
+    if (!this.vectorStore) return;
     this.vectorStore.removeFile(filePath);
   }
   /**
@@ -2526,8 +2515,7 @@ var IndexManager = class {
    * Clear the entire index.
    */
   async clear() {
-    if (!this.vectorStore)
-      return;
+    if (!this.vectorStore) return;
     this.vectorStore.clear();
     await this.vectorStore.save();
     this.status.totalChunks = 0;
@@ -2536,8 +2524,7 @@ var IndexManager = class {
    * Save the index.
    */
   async save() {
-    if (!this.vectorStore)
-      return;
+    if (!this.vectorStore) return;
     await this.vectorStore.save();
   }
 };
@@ -2794,8 +2781,7 @@ var ResearchAgent = class extends BaseAgent {
     const entries = [];
     const dirEntries = await fs3.readdir(dir, { withFileTypes: true });
     for (const entry of dirEntries) {
-      if (entries.length >= MAX_ENTRIES)
-        break;
+      if (entries.length >= MAX_ENTRIES) break;
       if (entry.name.startsWith(".") || entry.name === "node_modules") {
         continue;
       }
@@ -2849,12 +2835,10 @@ var ResearchAgent = class extends BaseAgent {
     const results = [];
     const queryLower = query.toLowerCase();
     const search = async (currentDir) => {
-      if (results.length >= MAX_RESULTS)
-        return;
+      if (results.length >= MAX_RESULTS) return;
       const entries = await fs3.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (results.length >= MAX_RESULTS)
-          return;
+        if (results.length >= MAX_RESULTS) return;
         if (entry.name.startsWith(".") || entry.name === "node_modules") {
           continue;
         }
@@ -2886,8 +2870,7 @@ var ResearchAgent = class extends BaseAgent {
    * Match filename against glob pattern.
    */
   matchesPattern(filename, pattern) {
-    if (pattern === "*")
-      return true;
+    if (pattern === "*") return true;
     const regex = new RegExp(
       "^" + pattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$",
       "i"
@@ -3410,12 +3393,10 @@ var CreativeAgent = class extends BaseAgent {
     const results = [];
     const queryLower = query.toLowerCase();
     const search = async (currentDir) => {
-      if (results.length >= MAX_RESULTS)
-        return;
+      if (results.length >= MAX_RESULTS) return;
       const entries = await fs6.readdir(currentDir, { withFileTypes: true });
       for (const entry of entries) {
-        if (results.length >= MAX_RESULTS)
-          return;
+        if (results.length >= MAX_RESULTS) return;
         if (entry.name.startsWith(".") || entry.name === "node_modules") {
           continue;
         }
@@ -3529,8 +3510,7 @@ function getLineNumber(content, index) {
 }
 function calculateSimilarity(str1, str2) {
   const maxLen = Math.max(str1.length, str2.length);
-  if (maxLen === 0)
-    return 1;
+  if (maxLen === 0) return 1;
   const dist = levenshteinDistance(str1, str2);
   return 1 - dist / maxLen;
 }
@@ -3690,8 +3670,7 @@ function anchorMatch(content, search) {
   let bestMatch = null;
   for (const start of startCandidates) {
     for (const end of endCandidates) {
-      if (end <= start)
-        continue;
+      if (end <= start) continue;
       const actualLineCount = end - start + 1;
       const expectedLineCount = searchLines.length;
       const lineCountDiff = Math.abs(actualLineCount - expectedLineCount);
@@ -3753,12 +3732,9 @@ function findMatch(content, search, options = {}) {
   if (anchor.found) {
     return anchor;
   }
-  if (exact.found)
-    return exact;
-  if (whitespace.found)
-    return whitespace;
-  if (fuzzy.found)
-    return fuzzy;
+  if (exact.found) return exact;
+  if (whitespace.found) return whitespace;
+  if (fuzzy.found) return fuzzy;
   return { found: false, strategy: "none", confidence: "none" };
 }
 
@@ -3918,8 +3894,7 @@ function parseEdits(content) {
   while ((match = editBlockRegex.exec(content)) !== null) {
     const block = match[1];
     const fileMatch = block.match(/<file>([\s\S]*?)<\/file>/);
-    if (!fileMatch)
-      continue;
+    if (!fileMatch) continue;
     const searchMatch = block.match(/<search>([\s\S]*?)<\/search>/);
     const search = searchMatch ? searchMatch[1].trim() : "";
     const replaceMatch = block.match(/<replace>([\s\S]*?)<\/replace>/);
@@ -4742,8 +4717,7 @@ async function initializeForConversation(conversationId, agentDefinitions, setti
 }
 function shutdownConversation(conversationId) {
   const convState = conversationStates.get(conversationId);
-  if (!convState)
-    return;
+  if (!convState) return;
   if (convState.router) {
     convState.router.shutdown();
   }
@@ -4828,16 +4802,16 @@ function getConversationIndexManager(conversationId) {
 import path6 from "path";
 import fs10 from "fs/promises";
 import { existsSync as existsSync6 } from "fs";
-function getTasksDir(filebarId) {
-  return path6.join(getConfigDir(), "filebars", filebarId, "tasks");
+function getTasksDir(workspaceId) {
+  return path6.join(getConfigDir(), "workspaces", workspaceId, "tasks");
 }
-async function ensureTasksDir(filebarId) {
-  const dir = getTasksDir(filebarId);
+async function ensureTasksDir(workspaceId) {
+  const dir = getTasksDir(workspaceId);
   await fs10.mkdir(dir, { recursive: true });
   return dir;
 }
-function getTaskListPath(filebarId, conversationId) {
-  return path6.join(getTasksDir(filebarId), `${conversationId}.json`);
+function getTaskListPath(workspaceId, conversationId) {
+  return path6.join(getTasksDir(workspaceId), `${conversationId}.json`);
 }
 function cleanupTaskList(taskList) {
   const seenDescriptions = /* @__PURE__ */ new Map();
@@ -4856,7 +4830,7 @@ function cleanupTaskList(taskList) {
     seenDescriptions.set(normalizedDesc, task);
     cleanedTasks.push(task);
   }
-  let needsReindex = cleanedTasks.some((t) => !t.id.match(/^t\d+$/));
+  const needsReindex = cleanedTasks.some((t) => !t.id.match(/^t\d+$/));
   if (needsReindex) {
     cleanedTasks.forEach((task, idx) => {
       task.id = `t${idx + 1}`;
@@ -4865,8 +4839,8 @@ function cleanupTaskList(taskList) {
   taskList.tasks = cleanedTasks;
   taskList.updatedAt = Date.now();
 }
-async function loadTaskList(filebarId, conversationId) {
-  const filePath = getTaskListPath(filebarId, conversationId);
+async function loadTaskList(workspaceId, conversationId) {
+  const filePath = getTaskListPath(workspaceId, conversationId);
   if (!existsSync6(filePath)) {
     return null;
   }
@@ -4877,7 +4851,7 @@ async function loadTaskList(filebarId, conversationId) {
     cleanupTaskList(taskList);
     if (taskList.tasks.length !== originalCount) {
       console.log(`[Markus] Cleaned up ${originalCount - taskList.tasks.length} duplicate tasks`);
-      await saveTaskList(filebarId, taskList);
+      await saveTaskList(workspaceId, taskList);
     }
     return taskList;
   } catch (error) {
@@ -4885,9 +4859,9 @@ async function loadTaskList(filebarId, conversationId) {
     return null;
   }
 }
-async function saveTaskList(filebarId, taskList) {
-  await ensureTasksDir(filebarId);
-  const filePath = getTaskListPath(filebarId, taskList.conversationId);
+async function saveTaskList(workspaceId, taskList) {
+  await ensureTasksDir(workspaceId);
+  const filePath = getTaskListPath(workspaceId, taskList.conversationId);
   taskList.updatedAt = Date.now();
   await fs10.writeFile(filePath, JSON.stringify(taskList, null, 2), "utf-8");
 }
@@ -4934,8 +4908,7 @@ function addTask(taskList, description, priority = 0) {
 }
 function updateTaskStatus(taskList, taskId, status, blockedBy) {
   const task = taskList.tasks.find((t) => t.id === taskId);
-  if (!task)
-    return false;
+  if (!task) return false;
   task.status = status;
   if (status === "done") {
     task.completedAt = Date.now();
@@ -4948,16 +4921,14 @@ function updateTaskStatus(taskList, taskId, status, blockedBy) {
 }
 function updateTaskDescription(taskList, taskId, description) {
   const task = taskList.tasks.find((t) => t.id === taskId);
-  if (!task)
-    return false;
+  if (!task) return false;
   task.description = description;
   taskList.updatedAt = Date.now();
   return true;
 }
 function removeTask(taskList, taskId) {
   const index = taskList.tasks.findIndex((t) => t.id === taskId);
-  if (index === -1)
-    return false;
+  if (index === -1) return false;
   taskList.tasks.splice(index, 1);
   taskList.updatedAt = Date.now();
   return true;
@@ -5199,7 +5170,7 @@ var TOOL_DEFINITIONS = [
   },
   {
     name: "get_workspace_folders",
-    description: "Get the list of workspace folders currently open in the filebar.",
+    description: "Get the list of workspace folders currently open in the workspace.",
     parameters: {
       type: "object",
       properties: {}
@@ -5651,8 +5622,7 @@ async function searchInDirectory(dirPath, query, filePattern) {
   return results;
 }
 function matchesPattern(filename, pattern) {
-  if (pattern === "*")
-    return true;
+  if (pattern === "*") return true;
   const regex = new RegExp(
     "^" + pattern.replace(/\./g, "\\.").replace(/\*/g, ".*") + "$",
     "i"
@@ -5810,10 +5780,10 @@ function executeConsultBoss(args) {
   };
 }
 async function executeUpdateTasks(args, context) {
-  if (!context.filebarId || !context.conversationId) {
-    return { success: false, error: "Missing filebarId or conversationId in context" };
+  if (!context.workspaceId || !context.conversationId) {
+    return { success: false, error: "Missing workspaceId or conversationId in context" };
   }
-  let taskList = await loadTaskList(context.filebarId, context.conversationId);
+  let taskList = await loadTaskList(context.workspaceId, context.conversationId);
   if (!taskList) {
     taskList = createTaskList(context.conversationId);
   }
@@ -5865,10 +5835,16 @@ async function executeUpdateTasks(args, context) {
   }
   console.log("[Markus] Saving task list:", taskList.tasks.length, "tasks");
   console.log("[Markus] Task descriptions:", taskList.tasks.map((t) => `[${t.status}] ${t.description}`));
-  await saveTaskList(context.filebarId, taskList);
+  await saveTaskList(context.workspaceId, taskList);
   let result = formatTaskListForPrompt(taskList);
   if (warnings.length > 0) {
     result += "\n\n\u26A0\uFE0F Warnings:\n" + warnings.map((w) => `- ${w}`).join("\n");
+  }
+  const openCount = taskList.tasks.filter((t) => t.status !== "done").length;
+  if (openCount > 10) {
+    result += `
+
+\u26A0\uFE0F Task list has ${openCount} open items \u2014 stop adding tasks and focus on completing existing ones.`;
   }
   return {
     success: true,
@@ -6028,22 +6004,22 @@ var DEFAULT_LOOP_CONFIG = {
 import path8 from "path";
 import fs12 from "fs/promises";
 import { existsSync as existsSync8 } from "fs";
-function getLogsDir(filebarId) {
-  return path8.join(getConfigDir(), "filebars", filebarId, "logs");
+function getLogsDir(workspaceId) {
+  return path8.join(getConfigDir(), "workspaces", workspaceId, "logs");
 }
-async function ensureLogsDir(filebarId) {
-  const dir = getLogsDir(filebarId);
+async function ensureLogsDir(workspaceId) {
+  const dir = getLogsDir(workspaceId);
   await fs12.mkdir(dir, { recursive: true });
   return dir;
 }
-function getLogPath(filebarId, conversationId) {
-  return path8.join(getLogsDir(filebarId), `${conversationId}.json`);
+function getLogPath(workspaceId, conversationId) {
+  return path8.join(getLogsDir(workspaceId), `${conversationId}.json`);
 }
-function createLog(filebarId, mode = "planning") {
+function createLog(workspaceId, mode = "planning") {
   const now = Date.now();
   return {
     id: v4_default(),
-    filebarId,
+    workspaceId,
     title: "New Conversation",
     mode,
     userMessages: [],
@@ -6061,8 +6037,8 @@ function createLog(filebarId, mode = "planning") {
   };
 }
 async function saveLog(log) {
-  await ensureLogsDir(log.filebarId);
-  const filePath = getLogPath(log.filebarId, log.id);
+  await ensureLogsDir(log.workspaceId);
+  const filePath = getLogPath(log.workspaceId, log.id);
   log.updatedAt = Date.now();
   log.metadata.totalIterations = log.iterations.length;
   if (log.title === "New Conversation" && log.userMessages.length > 0) {
@@ -6071,8 +6047,8 @@ async function saveLog(log) {
   }
   await fs12.writeFile(filePath, JSON.stringify(log, null, 2), "utf-8");
 }
-async function loadLog(filebarId, conversationId) {
-  const filePath = getLogPath(filebarId, conversationId);
+async function loadLog(workspaceId, conversationId) {
+  const filePath = getLogPath(workspaceId, conversationId);
   if (!existsSync8(filePath)) {
     return null;
   }
@@ -6084,8 +6060,8 @@ async function loadLog(filebarId, conversationId) {
     return null;
   }
 }
-async function deleteLog(filebarId, conversationId) {
-  const filePath = getLogPath(filebarId, conversationId);
+async function deleteLog(workspaceId, conversationId) {
+  const filePath = getLogPath(workspaceId, conversationId);
   if (!existsSync8(filePath)) {
     return false;
   }
@@ -6097,8 +6073,8 @@ async function deleteLog(filebarId, conversationId) {
     return false;
   }
 }
-async function listLogs(filebarId) {
-  const dir = getLogsDir(filebarId);
+async function listLogs(workspaceId) {
+  const dir = getLogsDir(workspaceId);
   if (!existsSync8(dir)) {
     return [];
   }
@@ -6106,8 +6082,7 @@ async function listLogs(filebarId) {
     const files = await fs12.readdir(dir);
     const logs = [];
     for (const file of files) {
-      if (!file.endsWith(".json"))
-        continue;
+      if (!file.endsWith(".json")) continue;
       try {
         const content = await fs12.readFile(path8.join(dir, file), "utf-8");
         const log = JSON.parse(content);
@@ -6228,11 +6203,9 @@ function estimateTokens3(log) {
   return Math.ceil(chars / 4);
 }
 function getBlockingToolCall(log) {
-  if (log.iterations.length === 0)
-    return null;
+  if (log.iterations.length === 0) return null;
   const lastIteration = log.iterations[log.iterations.length - 1];
-  if (lastIteration.endState.type !== "blocking_tool")
-    return null;
+  if (lastIteration.endState.type !== "blocking_tool") return null;
   const blockingId = lastIteration.endState.toolCallId;
   return lastIteration.toolCalls.find((tc) => tc.id === blockingId) || null;
 }
@@ -6319,11 +6292,19 @@ async function buildSystemPrompt(workspaceFolders, mode, tasks, agentDefinitions
 ## Available Tools (in priority order)
 
 1. **consult_boss** - Show messages to user (ONLY way to communicate!)
-2. **update_tasks** - Add/complete/remove tasks (call first each turn to maintain focus)
-3. **ask_user** - Ask user with predefined options (PAUSES for input)
-4. **request_task_approval** - Submit completed work for approval (PAUSES)
-5. **consult_*_agent** - Get specialist input (non-blocking)
-6. **read_file, edit_file, create_file, list_directory, search_files** - Do the work
+2. **read_file, edit_file, create_file, list_directory, search_files** - Do the actual work
+3. **update_tasks** - Track progress (NOT for planning \u2014 see Task Rules below)
+4. **ask_user** - Ask user with predefined options (PAUSES for input)
+5. **request_task_approval** - Submit completed work for approval (PAUSES)
+6. **consult_*_agent** - Get specialist input (non-blocking)
+
+## Task Rules
+
+- Keep your task list SHORT \u2014 aim for 3-7 tasks max. Each task should represent a meaningful deliverable, not a micro-step.
+- Do NOT decompose tasks into sub-tasks. If a task is complex, just start working on it.
+- Do NOT create new tasks for work you've already done or are about to do in this iteration.
+- Spend most iterations doing actual work (reading/writing files), not reorganizing tasks.
+- When all tasks are done, call request_task_approval immediately.
 
 ## Current Mode: ${mode.toUpperCase()}
 
@@ -6426,8 +6407,8 @@ ${globalAgentInstructions}
     const noTasksPrompt = `## Tasks
 
 No tasks defined yet. When you receive a request:
-1. First, use update_tasks to create your task list
-2. Then work through the tasks systematically
+1. Use update_tasks to create 3-7 high-level tasks (NOT sub-tasks)
+2. Immediately start working on the first task
 3. Use consult_boss to communicate progress
 4. When done, call request_task_approval
 
@@ -6754,10 +6735,8 @@ function parseContentForToolCalls(content) {
         const start = i;
         i++;
         while (i < text.length && depth > 0) {
-          if (text[i] === "{")
-            depth++;
-          else if (text[i] === "}")
-            depth--;
+          if (text[i] === "{") depth++;
+          else if (text[i] === "}") depth--;
           i++;
         }
         if (depth === 0) {
@@ -6804,10 +6783,8 @@ function isSafeTool(toolName) {
     "consult_style_agent",
     "consult_creative_agent"
   ];
-  if (safeTools.includes(toolName))
-    return true;
-  if (toolName.startsWith("consult_") && toolName.endsWith("_agent"))
-    return true;
+  if (safeTools.includes(toolName)) return true;
+  if (toolName.startsWith("consult_") && toolName.endsWith("_agent")) return true;
   return false;
 }
 function isTransientError(error) {
@@ -6856,7 +6833,7 @@ var LoopController = class {
       log,
       settings,
       workspaceFolders,
-      filebarId,
+      workspaceId,
       transport,
       getOpenFiles,
       onEvent,
@@ -6875,7 +6852,7 @@ var LoopController = class {
           waitingForInput: false
         };
       }
-      let taskList = await loadTaskList(filebarId, log.id);
+      let taskList = await loadTaskList(workspaceId, log.id);
       if (!taskList) {
         taskList = createTaskList(log.id);
       }
@@ -7065,7 +7042,7 @@ var LoopController = class {
             workspaceFolders,
             openFiles: getOpenFiles(),
             mainWindow: null,
-            filebarId,
+            workspaceId,
             conversationId: log.id
           };
           try {
@@ -7125,7 +7102,7 @@ var LoopController = class {
           };
         }
       }
-      const updatedTaskList = await loadTaskList(filebarId, log.id);
+      const updatedTaskList = await loadTaskList(workspaceId, log.id);
       if (updatedTaskList) {
         updateTasks(log, {
           tasks: updatedTaskList.tasks,
@@ -7208,14 +7185,12 @@ async function runThoughtLoop(options) {
 
 // ../../electron/markus/thoughtLoop/migrator.ts
 function isOldFormat(data) {
-  if (!data || typeof data !== "object")
-    return false;
+  if (!data || typeof data !== "object") return false;
   const obj = data;
   return Array.isArray(obj.messages) && !Array.isArray(obj.iterations);
 }
 function isNewFormat(data) {
-  if (!data || typeof data !== "object")
-    return false;
+  if (!data || typeof data !== "object") return false;
   const obj = data;
   return Array.isArray(obj.iterations) && Array.isArray(obj.userMessages);
 }
@@ -7264,7 +7239,7 @@ function migrateConversation(old) {
   const mode = lastAssistant?.isPlan ? "planning" : "execution";
   return {
     id: old.id,
-    filebarId: old.filebarId,
+    workspaceId: old.filebarId ?? old.workspaceId,
     title: old.title,
     mode,
     userMessages,
@@ -7412,7 +7387,7 @@ ${toolResultsContent}`,
   return {
     id: log.id,
     title: log.title,
-    filebarId: log.filebarId,
+    workspaceId: log.workspaceId,
     messages,
     createdAt: log.createdAt,
     updatedAt: log.updatedAt
@@ -7462,7 +7437,7 @@ function getDisplayMessages(log) {
 import path10 from "path";
 import fs14 from "fs/promises";
 import { existsSync as existsSync10 } from "fs";
-function getFilebarId(folders) {
+function getWorkspaceId(folders) {
   if (folders.length === 0) {
     return "default";
   }
@@ -7513,12 +7488,12 @@ export {
   getConversationIndexManager,
   getDisplayMessages,
   getFileReadCache,
-  getFilebarId,
   getIndexManager,
   getRAGIndexStatus,
   getRAGSettings,
   getRecentIterations,
   getSettingsPath,
+  getWorkspaceId,
   initializeForConversation,
   initializeMultiAgentSystem,
   isInitializedForConversation,

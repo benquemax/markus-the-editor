@@ -23,6 +23,7 @@ const mockElectron = {
   },
   git: {
     isRepo: vi.fn().mockResolvedValue(false),
+    isRepoAtPath: vi.fn().mockResolvedValue(false),
     status: vi.fn().mockResolvedValue({
       current: 'main',
       tracking: 'origin/main',
@@ -38,7 +39,10 @@ const mockElectron = {
     pull: vi.fn().mockResolvedValue({ success: true }),
     commit: vi.fn().mockResolvedValue({ success: true }),
     push: vi.fn().mockResolvedValue({ success: true }),
-    add: vi.fn().mockResolvedValue({ success: true })
+    add: vi.fn().mockResolvedValue({ success: true }),
+    showFile: vi.fn().mockResolvedValue({ success: true, content: null }),
+    getConfig: vi.fn().mockResolvedValue(null),
+    getCollaborators: vi.fn().mockResolvedValue([])
   },
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined)
@@ -46,7 +50,27 @@ const mockElectron = {
   menu: {
     onToggleTheme: vi.fn().mockReturnValue(() => {}),
     onToggleSplitView: vi.fn().mockReturnValue(() => {}),
-    onOpenCommandPalette: vi.fn().mockReturnValue(() => {})
+    onOpenCommandPalette: vi.fn().mockReturnValue(() => {}),
+    onAddComment: vi.fn().mockReturnValue(() => {}),
+    onToggleComments: vi.fn().mockReturnValue(() => {}),
+    onToggleShowEdits: vi.fn().mockReturnValue(() => {}),
+    onOpenSettings: vi.fn().mockReturnValue(() => {})
+  },
+  explorer: {
+    readDirectory: vi.fn().mockResolvedValue({ success: true, entries: [] }),
+    openFolder: vi.fn().mockResolvedValue({ success: false, error: 'Cancelled' }),
+    getGitRoot: vi.fn().mockResolvedValue({ success: true, gitRoot: null }),
+    getGitStatus: vi.fn().mockResolvedValue({ success: true, files: [] }),
+    getFileDiff: vi.fn().mockResolvedValue({ success: true, hunks: [] }),
+    createFile: vi.fn().mockResolvedValue({ success: true, path: '/mock/file.md' }),
+    createDirectory: vi.fn().mockResolvedValue({ success: true, path: '/mock/dir' }),
+    saveBinaryFile: vi.fn().mockResolvedValue({ success: true, path: '/mock/image.jpg' }),
+    listFiles: vi.fn().mockResolvedValue({ success: true, files: [] }),
+    copyFile: vi.fn().mockResolvedValue({ success: true, path: '/mock/dest.jpg' }),
+    watchDirectory: vi.fn().mockResolvedValue({ success: true }),
+    unwatchDirectory: vi.fn().mockResolvedValue({ success: true }),
+    onDirectoryChanged: vi.fn().mockReturnValue(() => {}),
+    onOpenFolder: vi.fn().mockReturnValue(() => {})
   }
 }
 

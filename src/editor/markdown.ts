@@ -2,6 +2,7 @@ import { MarkdownParser, MarkdownSerializer, MarkdownSerializerState } from 'pro
 import MarkdownIt from 'markdown-it'
 import { schema } from './schema'
 import { Mark, Node } from 'prosemirror-model'
+import { serializeImageBlock } from '../lib/imageBlock'
 
 // Extended type to access internal 'out' property for table cell serialization
 interface MarkdownSerializerStateWithOut extends MarkdownSerializerState {
@@ -91,6 +92,11 @@ export const markdownSerializer = new MarkdownSerializer({
   image(state, node) {
     state.write('![' + state.esc(node.attrs.alt || '') + '](' + node.attrs.src +
       (node.attrs.title ? ' "' + node.attrs.title.replace(/"/g, '\\"') + '"' : '') + ')')
+  },
+  // Block-level image → standalone <img> HTML tag on its own line
+  image_block(state, node) {
+    state.write(serializeImageBlock(node.attrs as { src: string; alt?: string; title?: string | null; width?: 'full' | 'half' | 'quarter'; align?: 'center' | 'left' | 'right' }))
+    state.closeBlock(node)
   },
   hard_break(state, node, parent, index) {
     for (let i = index + 1; i < parent.childCount; i++) {

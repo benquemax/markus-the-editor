@@ -19,11 +19,15 @@ interface FileViewerProps {
   tab: Tab
   onContentChange: (content: string, wordCount: number, charCount: number) => void
   onSave: () => void
+  commentAuthor?: string
+  showEdits?: boolean
 }
 
 export interface FileViewerHandle {
   setContent: (content: string) => void
   getContent: () => string
+  addComment: () => void
+  toggleComments: () => void
 }
 
 /**
@@ -45,7 +49,7 @@ function UnsupportedViewer({ filePath }: { filePath: string | null }) {
 }
 
 export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
-  function FileViewer({ tab, onContentChange, onSave }, ref) {
+  function FileViewer({ tab, onContentChange, onSave, commentAuthor, showEdits }, ref) {
     const proseMirrorRef = useRef<ProseMirrorEditorHandle>(null)
     const codeEditorRef = useRef<CodeEditorHandle>(null)
 
@@ -66,6 +70,12 @@ export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
           return codeEditorRef.current.getContent()
         }
         return tab.content
+      },
+      addComment: () => {
+        proseMirrorRef.current?.addComment()
+      },
+      toggleComments: () => {
+        proseMirrorRef.current?.toggleComments()
       }
     }), [tab.content])
 
@@ -85,6 +95,8 @@ export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
             filePath={tab.filePath}
             onChange={onContentChange}
             onSave={onSave}
+            commentAuthor={commentAuthor}
+            showEdits={showEdits}
           />
         )
 

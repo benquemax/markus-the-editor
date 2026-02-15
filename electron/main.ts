@@ -3,7 +3,7 @@ import path from 'path'
 import fs from 'fs/promises'
 import { existsSync } from 'fs'
 import { createMenu } from './menu'
-import { setupFileWatcher, stopFileWatcher } from './fileWatcher'
+import { setupFileWatcher, stopFileWatcher, markInternalSave } from './fileWatcher'
 import { setupGitHandlers } from './git'
 import { setupAiHandlers } from './ai'
 import { setupFileExplorerHandlers } from './fileExplorer'
@@ -26,6 +26,7 @@ let pendingFilePath: string | null = null
 const store = new Store({
   defaults: {
     recentFiles: [] as string[],
+    recentFolders: [] as string[],
     windowBounds: { width: 1200, height: 800 },
     theme: 'system' as 'light' | 'dark' | 'system',
     aiMerge: {
@@ -292,6 +293,7 @@ ipcMain.handle('file:save', async (_, content: string) => {
   if (!currentFilePath) return { success: false, error: 'No file path' }
 
   try {
+    markInternalSave()
     stopFileWatcher()
     await fs.writeFile(currentFilePath, content, 'utf-8')
     setupFileWatcher(currentFilePath, mainWindow!)
@@ -405,26 +407,26 @@ ipcMain.handle('file:openPath', async (_, filePath: string) => {
 })
 
 /**
- * Filebar Storage Handlers
+ * Workspace Storage Handlers
  *
- * Filebars are saved in ~/.config/markus-the-editor/filebars/ following XDG Base Directory spec.
- * Each filebar is a JSON file containing an array of folder entries.
+ * Workspaces are saved in ~/.config/markus-the-editor/workspaces/ following XDG Base Directory spec.
+ * Each workspace is a JSON file containing an array of folder entries.
  */
-function getFilebarDir(): string {
+function getWorkspaceDir(): string {
   const configDir = process.env.XDG_CONFIG_HOME || path.join(app.getPath('home'), '.config')
-  return path.join(configDir, 'markus-the-editor', 'filebars')
+  return path.join(configDir, 'markus-the-editor', 'workspaces')
 }
 
-async function ensureFilebarDir(): Promise<void> {
-  const dir = getFilebarDir()
+async function ensureWorkspaceDir(): Promise<void> {
+  const dir = getWorkspaceDir()
   await fs.mkdir(dir, { recursive: true })
 }
 
-ipcMain.handle('filebar:save', async (_, name: string, folders: Array<{ path: string; isGitRepo: boolean }>) => {
+ipcMain.handle('workspace:save', async (_, name: string, folders: Array<{ path: string; isGitRepo: boolean }>) => {
   try {
-    await ensureFilebarDir()
+    await ensureWorkspaceDir()
     const sanitizedName = name.replace(/[^a-zA-Z0-9_-]/g, '_')
-    const filePath = path.join(getFilebarDir(), `${sanitizedName}.json`)
+    const filePath = path.join(getWorkspaceDir(), `${sanitizedName}.json`)
     await fs.writeFile(filePath, JSON.stringify({ name, folders }, null, 2), 'utf-8')
     return { success: true, path: filePath }
   } catch (error) {
@@ -432,19 +434,19 @@ ipcMain.handle('filebar:save', async (_, name: string, folders: Array<{ path: st
   }
 })
 
-ipcMain.handle('filebar:list', async () => {
+ipcMain.handle('workspace:list', async () => {
   try {
-    await ensureFilebarDir()
-    const dir = getFilebarDir()
+    await ensureWorkspaceDir()
+    const dir = getWorkspaceDir()
     const files = await fs.readdir(dir)
-    const filebars: Array<{ name: string; fileName: string; folderCount: number }> = []
+    const workspaces: Array<{ name: string; fileName: string; folderCount: number }> = []
 
     for (const file of files) {
       if (!file.endsWith('.json')) continue
       try {
         const content = await fs.readFile(path.join(dir, file), 'utf-8')
         const data = JSON.parse(content)
-        filebars.push({
+        workspaces.push({
           name: data.name || file.replace('.json', ''),
           fileName: file,
           folderCount: data.folders?.length || 0
@@ -454,15 +456,15 @@ ipcMain.handle('filebar:list', async () => {
       }
     }
 
-    return { success: true, filebars }
+    return { success: true, workspaces }
   } catch (error) {
-    return { success: false, error: String(error), filebars: [] }
+    return { success: false, error: String(error), workspaces: [] }
   }
 })
 
-ipcMain.handle('filebar:load', async (_, fileName: string) => {
+ipcMain.handle('workspace:load', async (_, fileName: string) => {
   try {
-    const filePath = path.join(getFilebarDir(), fileName)
+    const filePath = path.join(getWorkspaceDir(), fileName)
     const content = await fs.readFile(filePath, 'utf-8')
     const data = JSON.parse(content)
     return { success: true, folders: data.folders || [] }
@@ -471,9 +473,9 @@ ipcMain.handle('filebar:load', async (_, fileName: string) => {
   }
 })
 
-ipcMain.handle('filebar:delete', async (_, fileName: string) => {
+ipcMain.handle('workspace:delete', async (_, fileName: string) => {
   try {
-    const filePath = path.join(getFilebarDir(), fileName)
+    const filePath = path.join(getWorkspaceDir(), fileName)
     await fs.unlink(filePath)
     return { success: true }
   } catch (error) {

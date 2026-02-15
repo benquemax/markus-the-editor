@@ -271,7 +271,7 @@ export interface LoopControllerOptions {
   log: ConversationLog
   settings: MarkusSettings
   workspaceFolders: string[]
-  filebarId: string
+  workspaceId: string
   transport: EventTransport
   getOpenFiles: () => string[]
   onEvent: ThoughtLoopEventHandler
@@ -309,7 +309,7 @@ export class LoopController {
       log,
       settings,
       workspaceFolders,
-      filebarId,
+      workspaceId,
       transport,
       getOpenFiles,
       onEvent,
@@ -336,7 +336,7 @@ export class LoopController {
       }
 
       // Load current task list
-      let taskList = await loadTaskList(filebarId, log.id)
+      let taskList = await loadTaskList(workspaceId, log.id)
       if (!taskList) {
         taskList = createTaskList(log.id)
       }
@@ -589,7 +589,7 @@ export class LoopController {
             workspaceFolders,
             openFiles: getOpenFiles(),
             mainWindow: null,
-            filebarId,
+            workspaceId,
             conversationId: log.id
           }
 
@@ -668,7 +668,7 @@ export class LoopController {
       }
 
       // Update task list in log
-      const updatedTaskList = await loadTaskList(filebarId, log.id)
+      const updatedTaskList = await loadTaskList(workspaceId, log.id)
       if (updatedTaskList) {
         updateTasks(log, {
           tasks: updatedTaskList.tasks,

@@ -207,6 +207,47 @@ const nodes: Record<string, NodeSpec> = {
     }
   },
 
+  // Block-level image with layout controls (width, alignment).
+  // Rendered via a custom NodeView (ImageBlockView) with hover toolbar.
+  // Serialized to <img> HTML tags in markdown for full roundtripping.
+  image_block: {
+    attrs: {
+      src: {},
+      alt: { default: '' },
+      title: { default: null },
+      width: { default: 'full' },
+      align: { default: 'center' }
+    },
+    group: 'block',
+    draggable: true,
+    atom: true,
+    parseDOM: [{
+      tag: 'figure[data-image-block]',
+      getAttrs(node) {
+        const element = node as HTMLElement
+        const img = element.querySelector('img')
+        return {
+          src: img?.getAttribute('src') || '',
+          alt: img?.getAttribute('alt') || '',
+          title: img?.getAttribute('title') || null,
+          width: element.getAttribute('data-width') || 'full',
+          align: element.getAttribute('data-align') || 'center'
+        }
+      }
+    }],
+    toDOM(node) {
+      return ['figure', {
+        'data-image-block': '',
+        'data-width': node.attrs.width,
+        'data-align': node.attrs.align
+      }, ['img', {
+        src: node.attrs.src,
+        alt: node.attrs.alt,
+        title: node.attrs.title
+      }]]
+    }
+  },
+
   hard_break: {
     inline: true,
     group: 'inline',
@@ -283,6 +324,25 @@ const marks: Record<string, MarkSpec> = {
     ],
     toDOM() {
       return ['s', 0]
+    }
+  },
+
+  // Inline comment highlight — marks text that has an associated comment thread.
+  // The commentId links to the thread data stored in the comment plugin state.
+  comment: {
+    attrs: { commentId: { default: '' } },
+    inclusive: false,
+    parseDOM: [{
+      tag: 'span[data-comment-id]',
+      getAttrs(node) {
+        return { commentId: (node as HTMLElement).getAttribute('data-comment-id') }
+      }
+    }],
+    toDOM(node) {
+      return ['span', {
+        'data-comment-id': node.attrs.commentId,
+        class: 'comment-highlight'
+      }, 0]
     }
   }
 }

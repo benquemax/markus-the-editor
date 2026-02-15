@@ -37,7 +37,7 @@ export interface MarkusSettings {
 export interface MarkusConversation {
   id: string
   title: string
-  filebarId: string
+  workspaceId: string
   messages: MarkusChatMessage[]
   createdAt: number
   updatedAt: number
@@ -176,6 +176,9 @@ export interface ElectronAPI {
       hasConflicts: boolean
       error?: string
     }>
+    showFile: (filePath: string) => Promise<{ success: boolean; content?: string | null; error?: string }>
+    getConfig: (key: string) => Promise<string | null>
+    getCollaborators: () => Promise<string[]>
     pullWithConflictDetection: () => Promise<{
       success: boolean
       content?: string
@@ -218,7 +221,11 @@ export interface ElectronAPI {
     onToggleTheme: (callback: (theme: 'light' | 'dark' | 'system') => void) => () => void
     onToggleSplitView: (callback: () => void) => () => void
     onOpenCommandPalette: (callback: () => void) => () => void
-    onToggleExplorer: (callback: () => void) => () => void
+    onToggleWorkspace: (callback: () => void) => () => void
+    onAddComment: (callback: () => void) => () => void
+    onToggleComments: (callback: () => void) => () => void
+    onToggleShowEdits: (callback: () => void) => () => void
+    onOpenSettings: (callback: () => void) => () => void
   }
   explorer: {
     readDirectory: (path: string) => Promise<{ success: boolean; entries?: FileEntry[]; error?: string }>
@@ -228,14 +235,17 @@ export interface ElectronAPI {
     getFileDiff: (filePath: string) => Promise<{ success: boolean; hunks?: DiffHunk[]; error?: string }>
     createFile: (filePath: string) => Promise<{ success: boolean; path?: string; error?: string }>
     createDirectory: (dirPath: string) => Promise<{ success: boolean; path?: string; error?: string }>
+    saveBinaryFile: (filePath: string, base64Data: string) => Promise<{ success: boolean; path?: string; error?: string }>
+    listFiles: (dirPath: string) => Promise<{ success: boolean; files?: string[]; error?: string }>
+    copyFile: (sourcePath: string, destPath: string) => Promise<{ success: boolean; path?: string; error?: string }>
     watchDirectory: (path: string) => Promise<{ success: boolean; error?: string }>
     unwatchDirectory: () => Promise<{ success: boolean; error?: string }>
     onDirectoryChanged: (callback: () => void) => () => void
     onOpenFolder: (callback: (data: { path: string }) => void) => () => void
   }
-  filebar: {
+  workspace: {
     save: (name: string, folders: Array<{ path: string; isGitRepo: boolean }>) => Promise<{ success: boolean; path?: string; error?: string }>
-    list: () => Promise<{ success: boolean; filebars: Array<{ name: string; fileName: string; folderCount: number }>; error?: string }>
+    list: () => Promise<{ success: boolean; workspaces: Array<{ name: string; fileName: string; folderCount: number }>; error?: string }>
     load: (fileName: string) => Promise<{ success: boolean; folders?: Array<{ path: string; isGitRepo: boolean }>; error?: string }>
     delete: (fileName: string) => Promise<{ success: boolean; error?: string }>
   }
@@ -304,7 +314,7 @@ export interface ElectronAPI {
     onToolCallComplete: (callback: (data: { conversationId: string; toolCallId: string; result: unknown }) => void) => () => void
     onRequestComplete: (callback: (data: { conversationId: string; messageId: string; waitingForInput?: boolean }) => void) => () => void
     onRequestError: (callback: (data: { conversationId: string; error: string }) => void) => () => void
-    onToggleMarkus: (callback: () => void) => () => void
+    onToggleAgent: (callback: () => void) => () => void
 
     // Task list events
     onTasksUpdated: (callback: (data: { conversationId: string; tasks: MarkusTask[] }) => void) => () => void
@@ -376,7 +386,10 @@ const api: ElectronAPI = {
     pullWithConflictDetection: () => ipcRenderer.invoke('git:pullWithConflictDetection'),
     readCurrentFile: () => ipcRenderer.invoke('git:readCurrentFile'),
     writeResolution: (content) => ipcRenderer.invoke('git:writeResolution', content),
-    abortMerge: () => ipcRenderer.invoke('git:abortMerge')
+    abortMerge: () => ipcRenderer.invoke('git:abortMerge'),
+    showFile: (filePath) => ipcRenderer.invoke('git:showFile', filePath),
+    getConfig: (key) => ipcRenderer.invoke('git:getConfig', key),
+    getCollaborators: () => ipcRenderer.invoke('git:getCollaborators')
   },
   ai: {
     getSettings: () => ipcRenderer.invoke('ai:getSettings'),
@@ -403,10 +416,30 @@ const api: ElectronAPI = {
       ipcRenderer.on('menu:openCommandPalette', handler)
       return () => ipcRenderer.removeListener('menu:openCommandPalette', handler)
     },
-    onToggleExplorer: (callback) => {
+    onToggleWorkspace: (callback) => {
       const handler = () => callback()
-      ipcRenderer.on('menu:toggleExplorer', handler)
-      return () => ipcRenderer.removeListener('menu:toggleExplorer', handler)
+      ipcRenderer.on('menu:toggleWorkspace', handler)
+      return () => ipcRenderer.removeListener('menu:toggleWorkspace', handler)
+    },
+    onAddComment: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:addComment', handler)
+      return () => ipcRenderer.removeListener('menu:addComment', handler)
+    },
+    onToggleComments: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:toggleComments', handler)
+      return () => ipcRenderer.removeListener('menu:toggleComments', handler)
+    },
+    onToggleShowEdits: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:toggleShowEdits', handler)
+      return () => ipcRenderer.removeListener('menu:toggleShowEdits', handler)
+    },
+    onOpenSettings: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:openSettings', handler)
+      return () => ipcRenderer.removeListener('menu:openSettings', handler)
     }
   },
   explorer: {
@@ -417,6 +450,9 @@ const api: ElectronAPI = {
     getFileDiff: (filePath) => ipcRenderer.invoke('explorer:getFileDiff', filePath),
     createFile: (filePath) => ipcRenderer.invoke('explorer:createFile', filePath),
     createDirectory: (dirPath) => ipcRenderer.invoke('explorer:createDirectory', dirPath),
+    saveBinaryFile: (filePath, base64Data) => ipcRenderer.invoke('explorer:saveBinaryFile', filePath, base64Data),
+    listFiles: (dirPath) => ipcRenderer.invoke('explorer:listFiles', dirPath),
+    copyFile: (sourcePath, destPath) => ipcRenderer.invoke('explorer:copyFile', sourcePath, destPath),
     watchDirectory: (path) => ipcRenderer.invoke('explorer:watchDirectory', path),
     unwatchDirectory: () => ipcRenderer.invoke('explorer:unwatchDirectory'),
     onDirectoryChanged: (callback) => {
@@ -430,11 +466,11 @@ const api: ElectronAPI = {
       return () => ipcRenderer.removeListener('explorer:openFolder', handler)
     }
   },
-  filebar: {
-    save: (name, folders) => ipcRenderer.invoke('filebar:save', name, folders),
-    list: () => ipcRenderer.invoke('filebar:list'),
-    load: (fileName) => ipcRenderer.invoke('filebar:load', fileName),
-    delete: (fileName) => ipcRenderer.invoke('filebar:delete', fileName)
+  workspace: {
+    save: (name, folders) => ipcRenderer.invoke('workspace:save', name, folders),
+    list: () => ipcRenderer.invoke('workspace:list'),
+    load: (fileName) => ipcRenderer.invoke('workspace:load', fileName),
+    delete: (fileName) => ipcRenderer.invoke('workspace:delete', fileName)
   },
   markus: {
     // Server URL
@@ -507,10 +543,10 @@ const api: ElectronAPI = {
       ipcRenderer.on('markus:requestError', handler)
       return () => ipcRenderer.removeListener('markus:requestError', handler)
     },
-    onToggleMarkus: (callback) => {
+    onToggleAgent: (callback) => {
       const handler = () => callback()
-      ipcRenderer.on('menu:toggleMarkus', handler)
-      return () => ipcRenderer.removeListener('menu:toggleMarkus', handler)
+      ipcRenderer.on('menu:toggleAgent', handler)
+      return () => ipcRenderer.removeListener('menu:toggleAgent', handler)
     },
 
     // Task list events

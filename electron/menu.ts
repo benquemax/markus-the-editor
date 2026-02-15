@@ -69,6 +69,7 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
         },
         {
           label: 'Open Folder...',
+          accelerator: 'CmdOrCtrl+Shift+A',
           click: callbacks.onOpenFolder
         },
         {
@@ -115,26 +116,52 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
               { role: 'delete' as const },
               { type: 'separator' as const },
               { role: 'selectAll' as const }
-            ])
+            ]),
+        { type: 'separator' as const },
+        {
+          label: 'Add Comment',
+          accelerator: 'CmdOrCtrl+Alt+M',
+          click: () => window.webContents.send('menu:addComment')
+        },
+        ...(isMac
+          ? [{
+              label: 'Settings...',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => window.webContents.send('menu:openSettings')
+            }]
+          : [{
+              label: 'Settings',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => window.webContents.send('menu:openSettings')
+            }])
       ]
     },
     {
       label: 'View',
       submenu: [
         {
-          label: 'Toggle Explorer',
+          label: 'Toggle Workspace',
           accelerator: 'CmdOrCtrl+B',
-          click: () => window.webContents.send('menu:toggleExplorer')
+          click: () => window.webContents.send('menu:toggleWorkspace')
         },
         {
-          label: 'Toggle Markus',
+          label: 'Toggle Agent',
           accelerator: 'CmdOrCtrl+M',
-          click: () => window.webContents.send('menu:toggleMarkus')
+          click: () => window.webContents.send('menu:toggleAgent')
         },
         {
           label: 'Toggle Split View',
           accelerator: 'CmdOrCtrl+\\',
           click: () => window.webContents.send('menu:toggleSplitView')
+        },
+        {
+          label: 'Toggle Comments',
+          click: () => window.webContents.send('menu:toggleComments')
+        },
+        {
+          label: 'Show Edits',
+          accelerator: 'CmdOrCtrl+Shift+E',
+          click: () => window.webContents.send('menu:toggleShowEdits')
         },
         { type: 'separator' },
         {

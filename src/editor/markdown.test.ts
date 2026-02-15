@@ -189,6 +189,49 @@ describe('Markdown Serializer', () => {
     expect(markdown).toContain('> Quote')
   })
 
+  it('should serialize image_block as <img> tag', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.image_block.create({
+        src: 'doc/doc-1.jpg',
+        alt: 'Photo',
+        width: 'full',
+        align: 'center'
+      })
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('<img src="doc/doc-1.jpg" alt="Photo" />')
+    // Full/center defaults should NOT include width/align attributes
+    expect(markdown).not.toContain('width=')
+    expect(markdown).not.toContain('align=')
+  })
+
+  it('should serialize image_block with width and align attributes', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.image_block.create({
+        src: 'doc/doc-2.png',
+        alt: 'Diagram',
+        width: 'half',
+        align: 'left'
+      })
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('<img src="doc/doc-2.png" alt="Diagram" width="50%" align="left" />')
+  })
+
+  it('should serialize image_block with quarter width and right align', () => {
+    const doc = schema.nodes.doc.create(null, [
+      schema.nodes.image_block.create({
+        src: 'img.webp',
+        alt: 'Icon',
+        width: 'quarter',
+        align: 'right'
+      })
+    ])
+    const markdown = markdownSerializer.serialize(doc)
+    expect(markdown).toContain('width="25%"')
+    expect(markdown).toContain('align="right"')
+  })
+
   it('should serialize tables', () => {
     const doc = schema.nodes.doc.create(null, [
       schema.nodes.table.create(null, [

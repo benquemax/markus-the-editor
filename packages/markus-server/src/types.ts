@@ -153,7 +153,7 @@ export interface UpdateAgentDefinitionRequest {
 export interface ConversationInfo {
   id: string
   workspaceFolders: string[]
-  filebarId: string
+  workspaceId: string
   createdAt: number
   title?: string
   /** Agent definition IDs selected for this conversation */
@@ -165,7 +165,7 @@ export interface ConversationInfo {
  */
 export interface CreateConversationRequest {
   workspaceFolders: string[]
-  filebarId?: string
+  workspaceId?: string
   /** Agent definition IDs to use for this conversation */
   agentIds?: string[]
 }
