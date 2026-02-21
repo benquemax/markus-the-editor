@@ -1,5 +1,23 @@
 @import '@xterm/xterm/css/xterm.css';
 
+/* Override xterm.css hardcoded opaque backgrounds so the quake
+   terminal's semi-transparent container shows through. Without
+   these, .xterm-viewport paints solid black over everything. */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+  scrollbar-width: none;
+}
+.xterm .xterm-viewport::-webkit-scrollbar {
+  display: none !important;
+}
+/* Hide xterm's custom scrollbar overlay and its arrow buttons */
+.xterm .xterm-scrollable-element > .scrollbar {
+  display: none !important;
+}
+.xterm .xterm-screen {
+  background-color: transparent !important;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

@@ -25,6 +25,8 @@ let nextId = 1
  */
 export function createTerminal(
   cwd: string,
+  cols: number,
+  rows: number,
   onData: (data: string) => void,
   onExit: (exitCode: number) => void
 ): string {
@@ -43,8 +45,8 @@ export function createTerminal(
 
   const terminal = pty.spawn(shell, [], {
     name: 'xterm-256color',
-    cols: 80,
-    rows: 24,
+    cols,
+    rows,
     cwd,
     env
   })

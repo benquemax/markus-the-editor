@@ -19,6 +19,7 @@ const STORE_KEY = 'commentNickname'
 export function SettingsView({ open, onOpenChange }: SettingsViewProps) {
   const [nickname, setNickname] = useState('')
   const [gitName, setGitName] = useState<string | null>(null)
+  const [terminalOpacity, setTerminalOpacity] = useState(75)
   const [saved, setSaved] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -28,6 +29,10 @@ export function SettingsView({ open, onOpenChange }: SettingsViewProps) {
 
     window.electron.store.get(STORE_KEY).then((val: unknown) => {
       if (typeof val === 'string') setNickname(val)
+    })
+
+    window.electron.store.get('terminalOpacity').then((val: unknown) => {
+      if (typeof val === 'number') setTerminalOpacity(val)
     })
 
     window.electron.git.getConfig('user.name').then((name: string | null) => {
@@ -55,9 +60,10 @@ export function SettingsView({ open, onOpenChange }: SettingsViewProps) {
 
   const handleSave = useCallback(async () => {
     await window.electron.store.set(STORE_KEY, nickname.trim())
+    await window.electron.store.set('terminalOpacity', terminalOpacity)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
-  }, [nickname])
+  }, [nickname, terminalOpacity])
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
@@ -107,6 +113,24 @@ export function SettingsView({ open, onOpenChange }: SettingsViewProps) {
               {gitName
                 ? `Leave empty to use git name: ${gitName}`
                 : 'Used as your author name in comments'}
+            </p>
+          </div>
+
+          {/* Terminal opacity */}
+          <div>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Terminal opacity — {terminalOpacity}%
+            </label>
+            <input
+              type="range"
+              min={10}
+              max={100}
+              value={terminalOpacity}
+              onChange={(e) => setTerminalOpacity(Number(e.target.value))}
+              className="w-full accent-primary"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Background opacity of the dropdown terminal
             </p>
           </div>
         </div>

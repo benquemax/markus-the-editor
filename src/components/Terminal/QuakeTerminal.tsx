@@ -18,6 +18,8 @@ interface QuakeTerminalProps {
   visible: boolean
   height: number
   onHeightChange: (height: number) => void
+  /** Background opacity 0–100 (0 = fully transparent, 100 = fully opaque) */
+  opacity: number
   /** Called when visibility should toggle (e.g., last tab closed) */
   onToggle: () => void
   /** Default working directory for new terminals */
@@ -34,7 +36,7 @@ function createTab(): TerminalTab {
   }
 }
 
-export function QuakeTerminal({ visible, height, onHeightChange, onToggle, cwd }: QuakeTerminalProps) {
+export function QuakeTerminal({ visible, height, onHeightChange, opacity, onToggle, cwd }: QuakeTerminalProps) {
   const [tabs, setTabs] = useState<TerminalTab[]>(() => [createTab()])
   const [activeTabId, setActiveTabId] = useState<string>(() => tabs[0].id)
   const [isResizing, setIsResizing] = useState(false)
@@ -90,7 +92,6 @@ export function QuakeTerminal({ visible, height, onHeightChange, onToggle, cwd }
     terminalRefs.current.set(id, terminal)
   }, [])
 
-  // Resize handle drag
   const handleResizeMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setIsResizing(true)
@@ -98,9 +99,8 @@ export function QuakeTerminal({ visible, height, onHeightChange, onToggle, cwd }
     const startHeight = height
 
     const handleMouseMove = (e: MouseEvent) => {
-      // Dragging down increases height
       const delta = e.clientY - startY
-      const newHeight = Math.max(150, Math.min(600, startHeight + delta))
+      const newHeight = Math.max(150, Math.min(window.innerHeight * 0.85, startHeight + delta))
       onHeightChange(newHeight)
     }
 
@@ -117,23 +117,26 @@ export function QuakeTerminal({ visible, height, onHeightChange, onToggle, cwd }
   return (
     <div
       className={cn(
-        "absolute top-0 left-0 right-0 z-30 flex flex-col",
-        "bg-background/95 backdrop-blur-sm border-b border-border",
+        "fixed top-0 left-0 right-0 z-50 flex flex-col",
+        "shadow-2xl",
         "transition-transform duration-200 ease-in-out",
         visible ? "translate-y-0" : "-translate-y-full"
       )}
       style={{ height }}
     >
-      <TerminalTabs
-        tabs={tabs}
-        activeTabId={activeTabId}
-        onTabClick={setActiveTabId}
-        onTabClose={handleCloseTab}
-        onNewTab={handleNewTab}
-      />
+      {/* Tab bar — fully opaque */}
+      <div className="bg-neutral-900 border-b border-neutral-700 flex-shrink-0">
+        <TerminalTabs
+          tabs={tabs}
+          activeTabId={activeTabId}
+          onTabClick={setActiveTabId}
+          onTabClose={handleCloseTab}
+          onNewTab={handleNewTab}
+        />
+      </div>
 
-      {/* Terminal instances — all stay mounted, only active one is visible */}
-      <div className="flex-1 overflow-hidden relative">
+      {/* Terminal content — user-configurable transparency */}
+      <div className="flex-1 overflow-hidden relative" style={{ background: `rgba(0, 0, 0, ${opacity / 100})` }}>
         {tabs.map(tab => (
           <div key={tab.id} className="absolute inset-0">
             <TerminalInstance
@@ -146,16 +149,16 @@ export function QuakeTerminal({ visible, height, onHeightChange, onToggle, cwd }
         ))}
       </div>
 
-      {/* Resize handle at bottom */}
+      {/* Resize handle at bottom edge */}
       <div
         className={cn(
-          "h-1.5 cursor-row-resize flex items-center justify-center",
-          "hover:bg-primary/30 active:bg-primary/50 transition-colors",
-          isResizing && "bg-primary/50"
+          "h-1.5 cursor-row-resize flex items-center justify-center flex-shrink-0",
+          "bg-neutral-800 hover:bg-neutral-600 active:bg-neutral-500 transition-colors",
+          isResizing && "bg-neutral-500"
         )}
         onMouseDown={handleResizeMouseDown}
       >
-        <GripHorizontal className="w-4 h-4 text-muted-foreground/50" />
+        <GripHorizontal className="w-4 h-4 text-neutral-500" />
       </div>
     </div>
   )

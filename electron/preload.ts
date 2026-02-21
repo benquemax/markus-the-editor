@@ -123,7 +123,7 @@ export interface MarkusBlockingToolUI {
 
 export interface ElectronAPI {
   terminal: {
-    create: (cwd?: string) => Promise<string | null>
+    create: (cwd?: string, cols?: number, rows?: number) => Promise<string | null>
     write: (id: string, data: string) => Promise<void>
     resize: (id: string, cols: number, rows: number) => Promise<void>
     destroy: (id: string) => Promise<void>
@@ -338,7 +338,7 @@ export interface ElectronAPI {
 
 const api: ElectronAPI = {
   terminal: {
-    create: (cwd) => ipcRenderer.invoke('terminal:create', cwd),
+    create: (cwd, cols, rows) => ipcRenderer.invoke('terminal:create', cwd, cols, rows),
     write: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
     resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
     destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),

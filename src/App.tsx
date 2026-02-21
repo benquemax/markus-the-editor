@@ -52,7 +52,10 @@ function App() {
   const [showAgent, setShowAgent] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
-  const [terminalHeight, setTerminalHeight] = useState(300)
+  // Default to 50% of viewport height
+  const [terminalHeight, setTerminalHeight] = useState(() => Math.floor(window.innerHeight * 0.5))
+  // 0 = fully transparent, 100 = fully opaque. Default 75 (25% transparent)
+  const [terminalOpacity, setTerminalOpacity] = useState(75)
   const [agentWidth, setAgentWidth] = useState(() =>
     Math.floor(window.innerWidth * 0.25)
   )
@@ -291,6 +294,9 @@ function App() {
       window.electron.store.get('terminalHeight').then((saved: unknown) => {
         if (typeof saved === 'number') setTerminalHeight(saved)
       })
+      window.electron.store.get('terminalOpacity').then((saved: unknown) => {
+        if (typeof saved === 'number') setTerminalOpacity(saved)
+      })
     }
     loadState()
   }, [])
@@ -334,6 +340,11 @@ function App() {
   useEffect(() => {
     window.electron.store.set('terminalHeight', terminalHeight)
   }, [terminalHeight])
+
+  useEffect(() => {
+    window.electron.store.set('terminalOpacity', terminalOpacity)
+  }, [terminalOpacity])
+
 
   /**
    * Adds a folder to the workspace, checking if it's inside a git repo.
@@ -879,22 +890,17 @@ function App() {
         isVertical={isVertical}
       />
 
-      <div className="flex-1 flex flex-col overflow-hidden relative">
-      {/* Quake-style dropdown terminal */}
+      {/* Quake-style dropdown terminal — fixed overlay, doesn't affect layout */}
       <QuakeTerminal
         visible={showTerminal}
         height={terminalHeight}
         onHeightChange={setTerminalHeight}
+        opacity={terminalOpacity}
         onToggle={() => setShowTerminal(v => !v)}
         cwd={folders[0]?.path}
       />
 
-      <main className={cn(
-        "flex-1 flex overflow-hidden transition-[padding-top] duration-200",
-        isVertical && "flex-col"
-      )}
-      style={{ paddingTop: showTerminal ? terminalHeight : 0 }}
-      >
+      <main className={cn("flex-1 flex overflow-hidden", isVertical && "flex-col")}>
         {/* Workspace with multiple folder panels */}
         {showWorkspace && (
           <>
@@ -1035,7 +1041,6 @@ function App() {
           </>
         )}
       </main>
-      </div>
 
       <StatusBar
         wordCount={wordCount}

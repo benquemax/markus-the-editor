@@ -22,7 +22,7 @@ export function setupTerminalHandlers(
   getMainWindow: () => BrowserWindow | null,
   getDefaultCwd: () => string
 ): void {
-  ipcMain.handle('terminal:create', (_, cwd?: string) => {
+  ipcMain.handle('terminal:create', (_, cwd?: string, cols?: number, rows?: number) => {
     const win = getMainWindow()
     if (!win) return null
 
@@ -30,6 +30,8 @@ export function setupTerminalHandlers(
 
     const id = createTerminal(
       resolvedCwd,
+      cols || 80,
+      rows || 24,
       (data) => {
         // Forward PTY output to renderer
         win.webContents.send('terminal:data', { id, data })

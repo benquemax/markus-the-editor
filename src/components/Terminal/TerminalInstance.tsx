@@ -11,7 +11,6 @@ import { useEffect, useRef, useCallback } from 'react'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { ImageAddon } from '@xterm/addon-image'
-import { WebglAddon } from '@xterm/addon-webgl'
 import { useTerminal } from './useTerminal'
 
 interface TerminalInstanceProps {
@@ -37,7 +36,7 @@ export function TerminalInstance({ visible, cwd, onExit, onReady }: TerminalInst
     onExit()
   }, [onExit])
 
-  const { write, resize } = useTerminal({
+  const { start, write, resize } = useTerminal({
     cwd,
     onData: handlePtyData,
     onExit: handlePtyExit
@@ -53,7 +52,9 @@ export function TerminalInstance({ visible, cwd, onExit, onReady }: TerminalInst
       fontSize: 14,
       fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Menlo, Monaco, monospace",
       theme: {
-        background: 'transparent'
+        // 8-digit hex with alpha 0 — xterm's canvas renderer parses hex,
+        // not CSS color names, so 'transparent' silently falls back to black
+        background: '#00000000'
       },
       allowTransparency: true,
       scrollback: 5000,
@@ -69,18 +70,16 @@ export function TerminalInstance({ visible, cwd, onExit, onReady }: TerminalInst
 
     term.open(containerRef.current)
 
-    // Try WebGL for better performance, fall back to canvas
-    try {
-      const webglAddon = new WebglAddon()
-      webglAddon.onContextLoss(() => {
-        webglAddon.dispose()
-      })
-      term.loadAddon(webglAddon)
-    } catch {
-      // Canvas renderer fallback — no action needed
-    }
+    // NOTE: WebGL addon skipped intentionally — it doesn't support
+    // allowTransparency so it renders an opaque background, breaking
+    // the quake terminal's see-through effect. The default canvas
+    // renderer handles transparency correctly.
 
+    // Fit first so we know the real dimensions, then spawn the PTY
+    // at that size. This prevents the doubled-prompt issue where
+    // the shell renders at 80 cols then immediately gets resized.
     fitAddon.fit()
+    start(term.cols, term.rows)
 
     // Handle Ctrl+Shift+C/V for copy/paste — xterm.js swallows all
     // keyboard input by default, so we intercept these before they
@@ -167,20 +166,13 @@ export function TerminalInstance({ visible, cwd, onExit, onReady }: TerminalInst
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Fit terminal when visibility changes or window resizes
+  // Refit terminal when its container size changes (quake panel resize,
+  // window resize, or visibility toggle). ResizeObserver catches all of
+  // these — no need for separate window resize listener.
   useEffect(() => {
-    if (!visible || !fitAddonRef.current || !terminalRef.current) return
+    if (!visible || !fitAddonRef.current || !terminalRef.current || !containerRef.current) return
 
-    // Small delay to let CSS transition complete before measuring
-    const timer = setTimeout(() => {
-      fitAddonRef.current?.fit()
-      const term = terminalRef.current
-      if (term) {
-        resize(term.cols, term.rows)
-      }
-    }, 50)
-
-    const handleResize = () => {
+    const doFit = () => {
       fitAddonRef.current?.fit()
       const term = terminalRef.current
       if (term) {
@@ -188,10 +180,15 @@ export function TerminalInstance({ visible, cwd, onExit, onReady }: TerminalInst
       }
     }
 
-    window.addEventListener('resize', handleResize)
+    // Initial fit after transition completes
+    const timer = setTimeout(doFit, 50)
+
+    const observer = new ResizeObserver(() => doFit())
+    observer.observe(containerRef.current)
+
     return () => {
       clearTimeout(timer)
-      window.removeEventListener('resize', handleResize)
+      observer.disconnect()
     }
   }, [visible, resize])
 
