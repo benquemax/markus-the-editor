@@ -397,7 +397,8 @@ setupConverterHandlers({
   showSaveDialog,
   showOpenDialog,
   showMessageBox,
-  getCurrentFilePath: () => currentFilePath
+  getCurrentFilePath: () => currentFilePath,
+  setCurrentFilePath: (fp: string) => { currentFilePath = fp; mainWindow?.setTitle(`Markus - ${path.basename(fp)}`) }
 })
 
 // Track workspace folders and open files for Markus

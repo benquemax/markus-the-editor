@@ -419,9 +419,12 @@ function App() {
             setFolders(prev => [...prev, { path: result.gitRoot!, isGitRepo: true }])
           }
         } else {
-          // Not inside a git repo — add the containing folder
+          // Not inside a git repo — add the containing folder, but only if
+          // it isn't already inside an existing workspace folder (e.g. an
+          // imported file landing in a subfolder of an open workspace)
           const parentDir = filePath.substring(0, filePath.lastIndexOf('/'))
-          if (parentDir && !folders.some(f => f.path === parentDir)) {
+          const alreadyCovered = folders.some(f => parentDir.startsWith(f.path + '/') || parentDir === f.path)
+          if (parentDir && !alreadyCovered) {
             setFolders(prev => [...prev, { path: parentDir, isGitRepo: false }])
           }
         }

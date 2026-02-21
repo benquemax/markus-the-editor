@@ -23,6 +23,7 @@ type OpenDialogFn = (options: Electron.OpenDialogOptions) => Promise<DialogResul
 type SaveDialogFn = (options: Electron.SaveDialogOptions) => Promise<DialogResult<Electron.SaveDialogReturnValue>>
 type MessageBoxFn = (options: Electron.MessageBoxOptions) => Promise<DialogResult<Electron.MessageBoxReturnValue>>
 type GetCurrentFilePathFn = () => string | null
+type SetCurrentFilePathFn = (filePath: string) => void
 
 interface ConverterDeps {
   ipcMain: IpcMain
@@ -31,6 +32,7 @@ interface ConverterDeps {
   showOpenDialog: OpenDialogFn
   showMessageBox: MessageBoxFn
   getCurrentFilePath: GetCurrentFilePathFn
+  setCurrentFilePath: SetCurrentFilePathFn
 }
 
 /**
@@ -45,7 +47,8 @@ export function setupConverterHandlers({
   showSaveDialog,
   showOpenDialog,
   showMessageBox,
-  getCurrentFilePath
+  getCurrentFilePath,
+  setCurrentFilePath
 }: ConverterDeps): void {
 
   /**
@@ -92,6 +95,9 @@ export function setupConverterHandlers({
       console.log(`[Converter] Conversion complete (${markdown.length} chars), writing to disk...`)
       await fs.writeFile(saveResult.filePath, markdown, 'utf-8')
       console.log(`[Converter] Successfully wrote ${saveResult.filePath}`)
+
+      // Update main process state so export uses the right filename
+      setCurrentFilePath(saveResult.filePath)
 
       // Open the converted file in the editor
       const mainWindow = getMainWindow()
@@ -173,6 +179,9 @@ export function setupConverterHandlers({
 
       const markdown = await importFile(sourcePath)
       await fs.writeFile(saveResult.filePath, markdown, 'utf-8')
+
+      // Update main process state so export uses the right filename
+      setCurrentFilePath(saveResult.filePath)
 
       // Open the converted file in the editor
       const mainWindow = getMainWindow()
