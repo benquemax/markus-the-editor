@@ -9,6 +9,7 @@ import { Workspace, FolderEntry } from './components/Workspace'
 import { TabBar, Tab, createUntitledTab, createFileTab, createBinaryFileTab } from './components/TabBar'
 import { FileViewer, FileViewerHandle } from './components/FileViewer'
 import { AgentWidget } from './components/Markus'
+import { QuakeTerminal } from './components/Terminal'
 import { SettingsView } from './components/SettingsView/SettingsView'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
@@ -50,6 +51,8 @@ function App() {
   // Default to visible — same rationale as showWorkspace above
   const [showAgent, setShowAgent] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [showTerminal, setShowTerminal] = useState(false)
+  const [terminalHeight, setTerminalHeight] = useState(300)
   const [agentWidth, setAgentWidth] = useState(() =>
     Math.floor(window.innerWidth * 0.25)
   )
@@ -285,6 +288,9 @@ function App() {
       window.electron.store.get('agentHeight').then((saved: unknown) => {
         if (typeof saved === 'number') setAgentHeight(saved)
       })
+      window.electron.store.get('terminalHeight').then((saved: unknown) => {
+        if (typeof saved === 'number') setTerminalHeight(saved)
+      })
     }
     loadState()
   }, [])
@@ -324,6 +330,10 @@ function App() {
   useEffect(() => {
     window.electron.store.set('agentHeight', agentHeight)
   }, [agentHeight])
+
+  useEffect(() => {
+    window.electron.store.set('terminalHeight', terminalHeight)
+  }, [terminalHeight])
 
   /**
    * Adds a folder to the workspace, checking if it's inside a git repo.
@@ -614,6 +624,9 @@ function App() {
     const unsubOpenSettings = window.electron.menu.onOpenSettings(() => {
       setShowSettings(true)
     })
+    const unsubToggleTerminal = window.electron.menu.onToggleTerminal(() => {
+      setShowTerminal(v => !v)
+    })
 
     return () => {
       unsubTheme()
@@ -626,6 +639,7 @@ function App() {
       unsubToggleComments()
       unsubShowEdits()
       unsubOpenSettings()
+      unsubToggleTerminal()
     }
   }, [addFolderToWorkspace])
 
@@ -692,6 +706,11 @@ function App() {
       if ((e.metaKey || e.ctrlKey) && e.key === ',') {
         e.preventDefault()
         setShowSettings(true)
+      }
+      // Ctrl+Shift+T - Toggle terminal
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'T') {
+        e.preventDefault()
+        setShowTerminal(v => !v)
       }
       // Ctrl+Shift+A - Add folder to workspace
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'A') {
@@ -828,6 +847,7 @@ function App() {
     { id: 'theme-system', label: 'System Theme', action: () => setTheme('system') },
     { id: 'addComment', label: 'Add Comment', shortcut: 'Ctrl+Alt+M', action: () => editorRef.current?.addComment() },
     { id: 'toggleComments', label: 'Toggle Comments', action: () => editorRef.current?.toggleComments() },
+    { id: 'terminal', label: 'Toggle Terminal', shortcut: 'Ctrl+Shift+T', action: () => setShowTerminal(v => !v) },
     { id: 'settings', label: 'Settings', shortcut: 'Ctrl+,', action: () => setShowSettings(true) },
     ...(isGitRepo ? [
       { id: 'git', label: 'Git Panel', action: () => setShowGitPanel(v => !v) },
@@ -859,7 +879,22 @@ function App() {
         isVertical={isVertical}
       />
 
-      <main className={cn("flex-1 flex overflow-hidden", isVertical && "flex-col")}>
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+      {/* Quake-style dropdown terminal */}
+      <QuakeTerminal
+        visible={showTerminal}
+        height={terminalHeight}
+        onHeightChange={setTerminalHeight}
+        onToggle={() => setShowTerminal(v => !v)}
+        cwd={folders[0]?.path}
+      />
+
+      <main className={cn(
+        "flex-1 flex overflow-hidden transition-[padding-top] duration-200",
+        isVertical && "flex-col"
+      )}
+      style={{ paddingTop: showTerminal ? terminalHeight : 0 }}
+      >
         {/* Workspace with multiple folder panels */}
         {showWorkspace && (
           <>
@@ -1000,6 +1035,7 @@ function App() {
           </>
         )}
       </main>
+      </div>
 
       <StatusBar
         wordCount={wordCount}

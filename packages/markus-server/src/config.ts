@@ -34,7 +34,7 @@ export function getConfig(): ServerConfig {
     host: process.env.MARKUS_HOST || 'localhost',
     // CORS enabled by default for local development
     corsEnabled: process.env.MARKUS_CORS !== 'false',
-    corsOrigins: (process.env.MARKUS_CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000').split(','),
+    corsOrigins: (process.env.MARKUS_CORS_ORIGINS || 'http://localhost:5183,http://localhost:3000').split(','),
     settingsPath: process.env.MARKUS_SETTINGS_PATH,
     debug: process.env.MARKUS_DEBUG === 'true'
   }

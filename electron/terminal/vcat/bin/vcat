@@ -1,0 +1,51 @@
+#!/bin/bash
+# vcat — view files inline in the Markus terminal.
+#
+# For images and PDFs, delegates to vcat-render.mjs which emits
+# iTerm2 Inline Image Protocol escape sequences that xterm.js
+# (with @xterm/addon-image) can render. Falls back to cat for
+# text files and when the renderer isn't available.
+#
+# Environment (set by terminalManager.ts):
+#   MARKUS_NODE_BINARY    — path to Electron's bundled Node
+#   MARKUS_VCAT_RENDERER  — path to vcat-render.mjs
+
+if [ $# -eq 0 ]; then
+  echo "Usage: vcat <file> [file2 ...]"
+  exit 1
+fi
+
+for file in "$@"; do
+  if [ ! -f "$file" ]; then
+    echo "vcat: $file: No such file"
+    continue
+  fi
+
+  # Resolve to absolute path for the renderer script
+  abs_file="$(realpath "$file" 2>/dev/null || echo "$file")"
+  ext="${file##*.}"
+  ext_lower="$(echo "$ext" | tr '[:upper:]' '[:lower:]')"
+
+  case "$ext_lower" in
+    png|jpg|jpeg|gif|webp|bmp|svg|ico)
+      if [ -n "$MARKUS_NODE_BINARY" ] && [ -n "$MARKUS_VCAT_RENDERER" ]; then
+        "$MARKUS_NODE_BINARY" "$MARKUS_VCAT_RENDERER" image "$abs_file"
+      else
+        echo "vcat: image rendering not available (missing Node binary)"
+        echo "  $abs_file"
+      fi
+      ;;
+    pdf)
+      if [ -n "$MARKUS_NODE_BINARY" ] && [ -n "$MARKUS_VCAT_RENDERER" ]; then
+        "$MARKUS_NODE_BINARY" "$MARKUS_VCAT_RENDERER" pdf "$abs_file"
+      else
+        echo "vcat: PDF rendering not available (missing Node binary)"
+        echo "  $abs_file"
+      fi
+      ;;
+    *)
+      # Text files — just cat them
+      cat "$abs_file"
+      ;;
+  esac
+done

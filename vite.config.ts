@@ -20,7 +20,7 @@ export default defineConfig({
               formats: ['cjs']
             },
             rollupOptions: {
-              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws'],
+              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty'],
               output: {
                 entryFileNames: 'main.js'
               }
@@ -55,6 +55,10 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src')
     }
+  },
+  // Non-default port to avoid conflicts with other Vite projects
+  server: {
+    port: 5183
   },
   build: {
     outDir: 'dist',

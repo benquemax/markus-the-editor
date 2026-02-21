@@ -10,6 +10,7 @@ import { setupFileExplorerHandlers } from './fileExplorer'
 import { setupDirectoryWatcherHandlers, stopDirectoryWatcher } from './directoryWatcher'
 import { setupMarkusHandlers } from './markus/handlers'
 import { startEmbeddedServer, stopEmbeddedServer, getServerPort } from './markus/embeddedServer'
+import { setupTerminalHandlers, destroyAllTerminals } from './terminal'
 import Store from 'electron-store'
 
 // Set the application name explicitly so that the dock/taskbar and window
@@ -388,6 +389,17 @@ ipcMain.handle('markus:updateOpenFiles', (_, files: string[]) => {
   return { success: true }
 })
 
+// Set up terminal PTY handlers
+setupTerminalHandlers(
+  ipcMain,
+  () => mainWindow!,
+  () => {
+    // Default CWD: first workspace folder, or user home
+    const firstFolder = workspaceFolders[0]
+    return firstFolder || app.getPath('home')
+  }
+)
+
 // Set up Markus AI agent handlers
 setupMarkusHandlers(
   ipcMain,
@@ -516,6 +528,7 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', async () => {
+  destroyAllTerminals()
   stopFileWatcher()
   stopDirectoryWatcher()
   await stopEmbeddedServer()

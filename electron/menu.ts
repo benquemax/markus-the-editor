@@ -150,6 +150,11 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
           click: () => window.webContents.send('menu:toggleAgent')
         },
         {
+          label: 'Toggle Terminal',
+          accelerator: 'CmdOrCtrl+Shift+T',
+          click: () => window.webContents.send('menu:toggleTerminal')
+        },
+        {
           label: 'Toggle Split View',
           accelerator: 'CmdOrCtrl+\\',
           click: () => window.webContents.send('menu:toggleSplitView')

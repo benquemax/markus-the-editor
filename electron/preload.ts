@@ -122,6 +122,14 @@ export interface MarkusBlockingToolUI {
 }
 
 export interface ElectronAPI {
+  terminal: {
+    create: (cwd?: string) => Promise<string | null>
+    write: (id: string, data: string) => Promise<void>
+    resize: (id: string, cols: number, rows: number) => Promise<void>
+    destroy: (id: string) => Promise<void>
+    onData: (callback: (data: { id: string; data: string }) => void) => () => void
+    onExit: (callback: (data: { id: string; exitCode: number }) => void) => () => void
+  }
   file: {
     save: (content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
     saveAs: (content: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
@@ -226,6 +234,7 @@ export interface ElectronAPI {
     onToggleComments: (callback: () => void) => () => void
     onToggleShowEdits: (callback: () => void) => () => void
     onOpenSettings: (callback: () => void) => () => void
+    onToggleTerminal: (callback: () => void) => () => void
   }
   explorer: {
     readDirectory: (path: string) => Promise<{ success: boolean; entries?: FileEntry[]; error?: string }>
@@ -328,6 +337,22 @@ export interface ElectronAPI {
 }
 
 const api: ElectronAPI = {
+  terminal: {
+    create: (cwd) => ipcRenderer.invoke('terminal:create', cwd),
+    write: (id, data) => ipcRenderer.invoke('terminal:write', id, data),
+    resize: (id, cols, rows) => ipcRenderer.invoke('terminal:resize', id, cols, rows),
+    destroy: (id) => ipcRenderer.invoke('terminal:destroy', id),
+    onData: (callback) => {
+      const handler = (_: unknown, data: { id: string; data: string }) => callback(data)
+      ipcRenderer.on('terminal:data', handler)
+      return () => ipcRenderer.removeListener('terminal:data', handler)
+    },
+    onExit: (callback) => {
+      const handler = (_: unknown, data: { id: string; exitCode: number }) => callback(data)
+      ipcRenderer.on('terminal:exit', handler)
+      return () => ipcRenderer.removeListener('terminal:exit', handler)
+    }
+  },
   file: {
     save: (content) => ipcRenderer.invoke('file:save', content),
     saveAs: (content) => ipcRenderer.invoke('file:saveAs', content),
@@ -440,6 +465,11 @@ const api: ElectronAPI = {
       const handler = () => callback()
       ipcRenderer.on('menu:openSettings', handler)
       return () => ipcRenderer.removeListener('menu:openSettings', handler)
+    },
+    onToggleTerminal: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:toggleTerminal', handler)
+      return () => ipcRenderer.removeListener('menu:toggleTerminal', handler)
     }
   },
   explorer: {
