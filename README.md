@@ -21,7 +21,8 @@ A local, cross-platform WYSIWYG markdown editor built with Electron, React, and 
 - **Git Integration**: View git status, commit changes, pull/push from the editor
 - **Command Palette**: Quick access to all commands via `Ctrl+P`
 - **Themes**: Light, dark, and system theme support
-- **PDF Export**: Export your documents to PDF
+- **Document Import**: Convert DOCX, DOC, ODT, PDF, and HTML files to Markdown — via menu, command palette, or drag-and-drop onto workspace folders
+- **Document Export**: Export to PDF, Word (.docx), OpenDocument (.odt), or HTML
 - **Mermaid Charts**: Native rendering of mermaid diagrams — flowcharts, sequence diagrams, and more display directly in the editor
 - **External File Watching**: Detects changes made to files outside the editor
 - **Quake Terminal**: A dropdown terminal (toggle with `Ctrl+Shift+T`) that slides from the top of the screen. Supports multiple tabs, configurable transparency, and inline image/PDF rendering via the built-in `vcat` command
