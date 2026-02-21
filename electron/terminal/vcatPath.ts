@@ -11,6 +11,8 @@
  */
 
 import path from 'path'
+import fs from 'fs'
+import { execFileSync } from 'child_process'
 import { app } from 'electron'
 
 export interface VcatEnv {
@@ -38,7 +40,6 @@ function findNodeBinary(): string {
   ].filter(Boolean) as string[]
 
   // Check PATH — most reliable cross-platform approach
-  const { execFileSync } = require('child_process')
   try {
     const found = execFileSync('which', ['node'], { encoding: 'utf-8' }).trim()
     if (found) return found
@@ -47,7 +48,6 @@ function findNodeBinary(): string {
   }
 
   // Fallback to known locations
-  const fs = require('fs')
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate
   }
