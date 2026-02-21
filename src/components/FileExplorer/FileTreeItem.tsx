@@ -138,14 +138,37 @@ export function FileTreeItem({
     e.stopPropagation()
     setIsDragOver(false)
 
+    // Extensions that should trigger conversion instead of a raw copy,
+    // since these formats would be garbled if opened as-is
+    const IMPORTABLE_EXTENSIONS = ['.docx', '.doc', '.odt', '.pdf']
+
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
 
-    // Copy each file into the target directory
     for (const file of files) {
       // Electron exposes the native file path on the File object
       const sourcePath = (file as File & { path?: string }).path
       if (!sourcePath) continue
+
+      const ext = '.' + (file.name.split('.').pop() || '').toLowerCase()
+
+      if (IMPORTABLE_EXTENSIONS.includes(ext)) {
+        // Offer to convert document formats to Markdown instead of copying
+        const result = await window.electron.dialog.showMessage({
+          type: 'question',
+          title: 'Convert to Markdown?',
+          message: `Convert "${file.name}" to Markdown?`,
+          buttons: ['Convert', 'Copy as-is', 'Skip']
+        })
+        if (result.response === 0) {
+          // Pass the drop target directory so the save dialog defaults there
+          await window.electron.converter.importFile(sourcePath, node.path)
+          continue
+        } else if (result.response === 2) {
+          continue
+        }
+        // "Copy as-is" falls through to the copy below
+      }
 
       const destPath = `${node.path}/${file.name}`
       await window.electron.explorer.copyFile(sourcePath, destPath)

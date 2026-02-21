@@ -20,7 +20,7 @@ export default defineConfig({
               formats: ['cjs']
             },
             rollupOptions: {
-              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty'],
+              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty', 'mammoth', 'word-extractor', 'turndown', 'turndown-plugin-gfm', 'html-to-docx', 'pdfjs-dist/legacy/build/pdf.mjs'],
               output: {
                 entryFileNames: 'main.js'
               }

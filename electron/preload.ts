@@ -121,6 +121,8 @@ export interface MarkusBlockingToolUI {
   messageType?: 'info' | 'success' | 'warning' | 'error' | 'progress'
 }
 
+export type ExportFormat = 'docx' | 'odt' | 'html'
+
 export interface ElectronAPI {
   terminal: {
     create: (cwd?: string, cols?: number, rows?: number) => Promise<string | null>
@@ -222,6 +224,10 @@ export interface ElectronAPI {
       error?: string
     }>
   }
+  logger: {
+    log: (level: 'info' | 'warn' | 'error', message: string) => Promise<void>
+    getLogPath: () => Promise<string | null>
+  }
   shell: {
     openExternal: (url: string) => Promise<void>
   }
@@ -257,6 +263,15 @@ export interface ElectronAPI {
     list: () => Promise<{ success: boolean; workspaces: Array<{ name: string; fileName: string; folderCount: number }>; error?: string }>
     load: (fileName: string) => Promise<{ success: boolean; folders?: Array<{ path: string; isGitRepo: boolean }>; error?: string }>
     delete: (fileName: string) => Promise<{ success: boolean; error?: string }>
+  }
+  converter: {
+    importFile: (sourcePath: string, targetDir?: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
+    importWithDialog: () => Promise<{ success: boolean; filePath?: string; error?: string }>
+    exportFile: (content: string, format: ExportFormat) => Promise<{ success: boolean; error?: string }>
+    onImport: (callback: () => void) => () => void
+    onExportDocx: (callback: () => void) => () => void
+    onExportOdt: (callback: () => void) => () => void
+    onExportHtml: (callback: () => void) => () => void
   }
   markus: {
     // Server URL (provided by embedded server or external)
@@ -422,6 +437,10 @@ const api: ElectronAPI = {
     testConnection: () => ipcRenderer.invoke('ai:testConnection'),
     merge: (localContent, remoteContent) => ipcRenderer.invoke('ai:merge', localContent, remoteContent)
   },
+  logger: {
+    log: (level, message) => ipcRenderer.invoke('logger:log', level, message),
+    getLogPath: () => ipcRenderer.invoke('logger:getLogPath')
+  },
   shell: {
     openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url)
   },
@@ -501,6 +520,31 @@ const api: ElectronAPI = {
     list: () => ipcRenderer.invoke('workspace:list'),
     load: (fileName) => ipcRenderer.invoke('workspace:load', fileName),
     delete: (fileName) => ipcRenderer.invoke('workspace:delete', fileName)
+  },
+  converter: {
+    importFile: (sourcePath, targetDir) => ipcRenderer.invoke('converter:importFile', sourcePath, targetDir),
+    importWithDialog: () => ipcRenderer.invoke('converter:importWithDialog'),
+    exportFile: (content, format) => ipcRenderer.invoke('converter:exportFile', { content, format }),
+    onImport: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:import', handler)
+      return () => ipcRenderer.removeListener('menu:import', handler)
+    },
+    onExportDocx: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:exportDocx', handler)
+      return () => ipcRenderer.removeListener('menu:exportDocx', handler)
+    },
+    onExportOdt: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:exportOdt', handler)
+      return () => ipcRenderer.removeListener('menu:exportOdt', handler)
+    },
+    onExportHtml: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:exportHtml', handler)
+      return () => ipcRenderer.removeListener('menu:exportHtml', handler)
+    }
   },
   markus: {
     // Server URL

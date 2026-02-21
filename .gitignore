@@ -16,6 +16,7 @@ packages/markus-server/src/core/bundle.mjs
 Thumbs.db
 
 # Logs
+logs/
 *.log
 npm-debug.log*
 
