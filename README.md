@@ -24,6 +24,7 @@ A local, cross-platform WYSIWYG markdown editor built with Electron, React, and 
 - **PDF Export**: Export your documents to PDF
 - **Mermaid Charts**: Native rendering of mermaid diagrams — flowcharts, sequence diagrams, and more display directly in the editor
 - **External File Watching**: Detects changes made to files outside the editor
+- **Quake Terminal**: A dropdown terminal (toggle with `Ctrl+Shift+T`) that slides from the top of the screen. Supports multiple tabs, configurable transparency, and inline image/PDF rendering via the built-in `vcat` command
 
 ## Installation
 
@@ -128,6 +129,55 @@ Creates distributable packages for your platform (AppImage, deb, pacman on Linux
 | `Ctrl+Y` / `Ctrl+Shift+Z` | Redo |
 | `Tab` | Indent list item |
 | `Shift+Tab` | Outdent list item |
+| `Ctrl+Shift+T` | Toggle Terminal |
+
+### Terminal
+
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+Shift+C` | Copy selection |
+| `Ctrl+Shift+V` | Paste from clipboard |
+
+### vcat — Inline File Viewer
+
+The terminal includes `vcat`, a built-in command for viewing files inline:
+
+```bash
+vcat photo.png          # display image inline
+vcat document.pdf       # render PDF pages inline (max 20 pages)
+vcat notes.txt          # falls back to cat for text files
+```
+
+`vcat` uses the iTerm2 Inline Image Protocol to render images directly in the terminal. It works out of the box — no system-wide installation needed.
+
+## Contributing
+
+Contributions are welcome! Please follow the branching workflow described below.
+
+### Branching Workflow
+
+```
+feature/my-feature  →  dev  →  main
+                    rebase     squash merge
+```
+
+1. **Create a feature branch from `dev`**: `git checkout -b feature/my-feature dev`
+2. **Do your work** on the feature branch with as many commits as you need
+3. **Rebase onto `dev`** before merging: `git rebase dev`
+4. **Merge into `dev`**: open a PR targeting `dev`, or merge locally
+5. **When `dev` is stable**, it is **squash merged** into `main`
+6. **Releases are based on `main`** — tagged commits on `main` trigger the release pipeline
+
+### Quality Checks
+
+Before submitting a PR, make sure these all pass:
+
+```bash
+npm run typecheck   # TypeScript type checking
+npm run lint        # ESLint
+npm run test        # Vitest
+npm run build       # Full production build
+```
 
 ## License
 
