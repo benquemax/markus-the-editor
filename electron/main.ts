@@ -107,6 +107,12 @@ function createWindow() {
     }
   })
 
+  // Kill PTYs before the window is destroyed so their callbacks
+  // don't try to send to a dead webContents
+  mainWindow.on('close', () => {
+    destroyAllTerminals()
+  })
+
   mainWindow.on('closed', () => {
     mainWindow = null
   })

@@ -33,11 +33,15 @@ export function setupTerminalHandlers(
       cols || 80,
       rows || 24,
       (data) => {
-        // Forward PTY output to renderer
-        win.webContents.send('terminal:data', { id, data })
+        // Guard against window being destroyed while PTY flushes
+        if (!win.isDestroyed()) {
+          win.webContents.send('terminal:data', { id, data })
+        }
       },
       (exitCode) => {
-        win.webContents.send('terminal:exit', { id, exitCode })
+        if (!win.isDestroyed()) {
+          win.webContents.send('terminal:exit', { id, exitCode })
+        }
       }
     )
 
