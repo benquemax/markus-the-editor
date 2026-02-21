@@ -11,11 +11,16 @@ import { setupDirectoryWatcherHandlers, stopDirectoryWatcher } from './directory
 import { setupMarkusHandlers } from './markus/handlers'
 import { startEmbeddedServer, stopEmbeddedServer, getServerPort } from './markus/embeddedServer'
 import { setupTerminalHandlers, destroyAllTerminals } from './terminal'
+import { setupConverterHandlers } from './converter'
+import { initLogger, captureProcessErrors, setupLoggerHandlers, closeLogger } from './logger'
 import Store from 'electron-store'
 
 // Set the application name explicitly so that the dock/taskbar and window
 // title show "Markus" instead of the default "Electron".
 app.name = 'Markus'
+
+// Capture uncaught errors to log file from the very start
+captureProcessErrors()
 
 // Disable GPU acceleration if it causes issues on some Linux systems
 app.disableHardwareAcceleration()
@@ -136,6 +141,10 @@ function createWindow() {
     onSaveFile: () => handleSaveFile(),
     onSaveAsFile: () => handleSaveAsFile(),
     onPrintToPdf: () => handlePrintToPdf(),
+    onImport: () => mainWindow?.webContents.send('menu:import'),
+    onExportDocx: () => mainWindow?.webContents.send('menu:exportDocx'),
+    onExportOdt: () => mainWindow?.webContents.send('menu:exportOdt'),
+    onExportHtml: () => mainWindow?.webContents.send('menu:exportHtml'),
     getRecentFiles: () => store.get('recentFiles') as string[],
     onOpenRecentFile: (filePath: string) => openFile(filePath),
     onClearRecentFiles: () => store.set('recentFiles', [])
@@ -368,6 +377,9 @@ ipcMain.handle('store:set', (_, key: string, value: unknown) => store.set(key, v
 
 ipcMain.handle('shell:openExternal', (_, url: string) => shell.openExternal(url))
 
+// Set up logger IPC so renderer can write to the same log file
+setupLoggerHandlers(ipcMain)
+
 // Set up git handlers
 setupGitHandlers(ipcMain, () => currentFilePath)
 
@@ -377,6 +389,17 @@ setupAiHandlers(ipcMain, store)
 // Set up file explorer handlers
 setupFileExplorerHandlers(ipcMain, () => mainWindow)
 setupDirectoryWatcherHandlers(ipcMain, () => mainWindow)
+
+// Set up document converter handlers (import/export)
+setupConverterHandlers({
+  ipcMain,
+  getMainWindow: () => mainWindow,
+  showSaveDialog,
+  showOpenDialog,
+  showMessageBox,
+  getCurrentFilePath: () => currentFilePath,
+  setCurrentFilePath: (fp: string) => { currentFilePath = fp; mainWindow?.setTitle(`Markus - ${path.basename(fp)}`) }
+})
 
 // Track workspace folders and open files for Markus
 // These are updated via IPC from the renderer when state changes
@@ -502,6 +525,9 @@ ipcMain.handle('workspace:delete', async (_, fileName: string) => {
 })
 
 app.whenReady().then(async () => {
+  // Initialize file logging before anything else so all output is captured
+  await initLogger()
+
   // Start embedded Markus server before creating the window
   try {
     await startEmbeddedServer()
@@ -538,6 +564,7 @@ app.on('window-all-closed', async () => {
   stopFileWatcher()
   stopDirectoryWatcher()
   await stopEmbeddedServer()
+  closeLogger()
   if (process.platform !== 'darwin') {
     app.quit()
   }

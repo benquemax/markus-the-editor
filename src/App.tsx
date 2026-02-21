@@ -256,6 +256,24 @@ function App() {
     }
   }, [theme])
 
+  // Forward renderer-side errors to the centralized log file so they
+  // show up alongside main process logs in the same session file
+  useEffect(() => {
+    const handleError = (event: ErrorEvent) => {
+      window.electron.logger.log('error', `[window.onerror] ${event.message} at ${event.filename}:${event.lineno}`)
+    }
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason instanceof Error ? event.reason.stack || event.reason.message : String(event.reason)
+      window.electron.logger.log('error', `[unhandledrejection] ${reason}`)
+    }
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+    }
+  }, [])
+
   // Load saved theme and workspace state
   useEffect(() => {
     const loadState = async () => {
@@ -401,9 +419,12 @@ function App() {
             setFolders(prev => [...prev, { path: result.gitRoot!, isGitRepo: true }])
           }
         } else {
-          // Not inside a git repo — add the containing folder
+          // Not inside a git repo — add the containing folder, but only if
+          // it isn't already inside an existing workspace folder (e.g. an
+          // imported file landing in a subfolder of an open workspace)
           const parentDir = filePath.substring(0, filePath.lastIndexOf('/'))
-          if (parentDir && !folders.some(f => f.path === parentDir)) {
+          const alreadyCovered = folders.some(f => parentDir.startsWith(f.path + '/') || parentDir === f.path)
+          if (parentDir && !alreadyCovered) {
             setFolders(prev => [...prev, { path: parentDir, isGitRepo: false }])
           }
         }
@@ -614,6 +635,17 @@ function App() {
     }
   }, [content, activeTabId, activeTab?.fileType, createNewTab, openFileInTab, openBinaryFileInTab, updateTabContent, markTabSaved])
 
+  // Handle import: triggered from menu, delegates to main process
+  const handleImport = useCallback(async () => {
+    await window.electron.converter.importWithDialog()
+  }, [])
+
+  // Handle export: gets current content and sends to main process
+  const handleExport = useCallback(async (format: 'docx' | 'odt' | 'html') => {
+    const currentContent = editorRef.current?.getContent() || content
+    await window.electron.converter.exportFile(currentContent, format)
+  }, [content])
+
   // Handle menu events
   useEffect(() => {
     const unsubTheme = window.electron.menu.onToggleTheme(setTheme)
@@ -639,6 +671,12 @@ function App() {
       setShowTerminal(v => !v)
     })
 
+    // Import/export menu events
+    const unsubImport = window.electron.converter.onImport(handleImport)
+    const unsubExportDocx = window.electron.converter.onExportDocx(() => handleExport('docx'))
+    const unsubExportOdt = window.electron.converter.onExportOdt(() => handleExport('odt'))
+    const unsubExportHtml = window.electron.converter.onExportHtml(() => handleExport('html'))
+
     return () => {
       unsubTheme()
       unsubSplit()
@@ -651,8 +689,12 @@ function App() {
       unsubShowEdits()
       unsubOpenSettings()
       unsubToggleTerminal()
+      unsubImport()
+      unsubExportDocx()
+      unsubExportOdt()
+      unsubExportHtml()
     }
-  }, [addFolderToWorkspace])
+  }, [addFolderToWorkspace, handleImport, handleExport])
 
   // Auto-open agent panel when @markus is mentioned in a comment
   useEffect(() => {
@@ -743,6 +785,9 @@ function App() {
 
   // Handle drag and drop
   useEffect(() => {
+    // Extensions that should trigger the import conversion dialog
+    const IMPORTABLE_EXTENSIONS = ['.docx', '.doc', '.odt', '.pdf']
+
     const handleDrop = async (e: DragEvent) => {
       e.preventDefault()
       e.stopPropagation()
@@ -753,6 +798,24 @@ function App() {
       const firstItem = items[0] as File & { path: string }
       const droppedPath = firstItem.path
       if (!droppedPath) return
+
+      // Check if the file is an importable document format (DOCX, ODT, PDF).
+      // These would open as garbled raw content without conversion, so we
+      // intercept them before the normal file-open path.
+      const ext = '.' + (droppedPath.split('.').pop() || '').toLowerCase()
+      if (IMPORTABLE_EXTENSIONS.includes(ext)) {
+        const basename = droppedPath.split('/').pop() || droppedPath
+        const result = await window.electron.dialog.showMessage({
+          type: 'question',
+          title: 'Convert to Markdown?',
+          message: `Convert "${basename}" to Markdown?`,
+          buttons: ['Convert', 'Cancel']
+        })
+        if (result.response === 0) {
+          await window.electron.converter.importFile(droppedPath)
+        }
+        return
+      }
 
       const fileType = getFileType(droppedPath)
       const isSupported = isSupportedFile(fileType)
@@ -860,6 +923,10 @@ function App() {
     { id: 'toggleComments', label: 'Toggle Comments', action: () => editorRef.current?.toggleComments() },
     { id: 'terminal', label: 'Toggle Terminal', shortcut: 'Ctrl+Shift+T', action: () => setShowTerminal(v => !v) },
     { id: 'settings', label: 'Settings', shortcut: 'Ctrl+,', action: () => setShowSettings(true) },
+    { id: 'import', label: 'Import Document...', shortcut: 'Ctrl+Shift+I', action: handleImport },
+    { id: 'exportDocx', label: 'Export as Word Document', action: () => handleExport('docx') },
+    { id: 'exportOdt', label: 'Export as OpenDocument', action: () => handleExport('odt') },
+    { id: 'exportHtml', label: 'Export as HTML', action: () => handleExport('html') },
     ...(isGitRepo ? [
       { id: 'git', label: 'Git Panel', action: () => setShowGitPanel(v => !v) },
     ] : [])

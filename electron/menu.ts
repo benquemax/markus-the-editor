@@ -8,6 +8,10 @@ interface MenuCallbacks {
   onSaveFile: () => void
   onSaveAsFile: () => void
   onPrintToPdf: () => void
+  onImport: () => void
+  onExportDocx: () => void
+  onExportOdt: () => void
+  onExportHtml: () => void
   getRecentFiles: () => string[]
   onOpenRecentFile: (filePath: string) => void
   onClearRecentFiles: () => void
@@ -76,6 +80,11 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
           label: 'Open Recent',
           submenu: recentFilesMenu
         },
+        {
+          label: 'Import...',
+          accelerator: 'CmdOrCtrl+Shift+I',
+          click: callbacks.onImport
+        },
         { type: 'separator' },
         {
           label: 'Save',
@@ -89,9 +98,26 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
         },
         { type: 'separator' },
         {
-          label: 'Export to PDF...',
-          accelerator: 'CmdOrCtrl+Shift+E',
-          click: callbacks.onPrintToPdf
+          label: 'Export',
+          submenu: [
+            {
+              label: 'PDF...',
+              accelerator: 'CmdOrCtrl+Shift+E',
+              click: callbacks.onPrintToPdf
+            },
+            {
+              label: 'Word Document...',
+              click: callbacks.onExportDocx
+            },
+            {
+              label: 'OpenDocument...',
+              click: callbacks.onExportOdt
+            },
+            {
+              label: 'HTML...',
+              click: callbacks.onExportHtml
+            }
+          ]
         },
         { type: 'separator' },
         isMac ? { role: 'close' as const } : { role: 'quit' as const }
@@ -165,7 +191,7 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
         },
         {
           label: 'Show Edits',
-          accelerator: 'CmdOrCtrl+Shift+E',
+          accelerator: 'CmdOrCtrl+Shift+D',
           click: () => window.webContents.send('menu:toggleShowEdits')
         },
         { type: 'separator' },
