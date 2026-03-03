@@ -87,4 +87,68 @@ describe('importUrl', () => {
     const result = await importUrl('https://example.com/')
     expect(result.slug).toBe('my-great-page')
   })
+
+  it('falls back to "Untitled" when Defuddle returns empty title', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/html' },
+      text: () => Promise.resolve('<html><body>content</body></html>')
+    })
+    mockDefuddle.mockResolvedValue({
+      content: 'Some content',
+      title: '',
+    } as Partial<DefuddleResponse> as DefuddleResponse)
+
+    const result = await importUrl('https://example.com/some-page')
+
+    expect(result.title).toBe('Untitled')
+    // Empty title becomes undefined, so frontmatter should omit the title field
+    expect(result.markdown).not.toMatch(/^title:/m)
+  })
+
+  it('handles empty content from Defuddle without crashing', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/html' },
+      text: () => Promise.resolve('<html><body></body></html>')
+    })
+    mockDefuddle.mockResolvedValue({
+      content: '',
+      title: 'Empty Page',
+    } as Partial<DefuddleResponse> as DefuddleResponse)
+
+    const result = await importUrl('https://example.com/empty')
+
+    // Should still have valid frontmatter even with no content
+    expect(result.markdown).toContain('---')
+    expect(result.markdown).toContain('source: https://example.com/empty')
+  })
+
+  it('includes date_imported field in frontmatter', async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      headers: { get: () => 'text/html' },
+      text: () => Promise.resolve('<html><body><p>Test</p></body></html>')
+    })
+    mockDefuddle.mockResolvedValue({
+      content: 'Test',
+      title: 'Test Page',
+    } as Partial<DefuddleResponse> as DefuddleResponse)
+
+    const result = await importUrl('https://example.com/test')
+
+    // date_imported should be an ISO date (YYYY-MM-DD format)
+    expect(result.markdown).toMatch(/date_imported: \d{4}-\d{2}-\d{2}/)
+  })
+
+  it('rejects non-HTTP(S) URLs', async () => {
+    await expect(importUrl('ftp://example.com/file'))
+      .rejects.toThrow('Only HTTP and HTTPS URLs are supported')
+
+    await expect(importUrl('file:///etc/passwd'))
+      .rejects.toThrow('Only HTTP and HTTPS URLs are supported')
+
+    // fetch should never be called for rejected protocols
+    expect(mockFetch).not.toHaveBeenCalled()
+  })
 })

@@ -113,26 +113,39 @@ export interface ImportUrlResult {
  * option makes it return Markdown directly instead of HTML.
  */
 export async function importUrl(url: string): Promise<ImportUrlResult> {
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    throw new Error('Only HTTP and HTTPS URLs are supported')
+  }
+
   // Defuddle is ESM-only, use dynamic import (same pattern as pdfjs-dist in importers.ts)
   const { Defuddle } = await import('defuddle/node')
 
-  const response = await fetch(url, {
-    headers: {
-      // Identify ourselves honestly — some sites block unknown user agents
-      'User-Agent': 'Mozilla/5.0 (compatible; Markus Editor)'
+  // 15-second timeout prevents the UI from hanging indefinitely on slow/unresponsive servers
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 15_000)
+  let html: string
+  try {
+    const response = await fetch(url, {
+      headers: {
+        // Identify ourselves honestly — some sites block unknown user agents
+        'User-Agent': 'Mozilla/5.0 (compatible; Markus Editor)'
+      },
+      signal: controller.signal
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`)
     }
-  })
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`)
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+      throw new Error(`URL did not return HTML (got ${contentType})`)
+    }
+
+    html = await response.text()
+  } finally {
+    clearTimeout(timeout)
   }
-
-  const contentType = response.headers.get('content-type') || ''
-  if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
-    throw new Error(`URL did not return HTML (got ${contentType})`)
-  }
-
-  const html = await response.text()
 
   const result = await Defuddle(html, url, { markdown: true })
 
@@ -148,8 +161,8 @@ export async function importUrl(url: string): Promise<ImportUrlResult> {
     dateImported
   })
 
-  // When markdown: true is passed, Defuddle puts the converted markdown
-  // into result.content (overwriting the original HTML)
+  // With `markdown: true`, Defuddle overwrites result.content with markdown.
+  // (The `contentMarkdown` field is only populated with `separateMarkdown` option.)
   const markdown = frontmatter + (result.content || '')
 
   return { markdown, title, slug }
