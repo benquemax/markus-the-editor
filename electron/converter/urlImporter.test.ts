@@ -29,6 +29,14 @@ describe('extractSlug', () => {
   it('strips query params and hash', () => {
     expect(extractSlug('https://example.com/article?ref=twitter#section')).toBe('article')
   })
+
+  it('returns null for empty string', () => {
+    expect(extractSlug('')).toBeNull()
+  })
+
+  it('returns null for non-URL text', () => {
+    expect(extractSlug('not a url at all')).toBeNull()
+  })
 })
 
 describe('slugifyTitle', () => {
@@ -42,6 +50,14 @@ describe('slugifyTitle', () => {
 
   it('collapses multiple dashes', () => {
     expect(slugifyTitle('foo   bar')).toBe('foo-bar')
+  })
+
+  it('returns empty string for empty input', () => {
+    expect(slugifyTitle('')).toBe('')
+  })
+
+  it('returns empty string when all characters are special', () => {
+    expect(slugifyTitle('!@#$%^&*()')).toBe('')
   })
 })
 
@@ -74,5 +90,23 @@ describe('generateFrontmatter', () => {
       dateImported: '2026-03-03'
     })
     expect(result).toContain('title: "Title: With Colon"')
+  })
+
+  it('escapes author with internal single quote', () => {
+    const result = generateFrontmatter({
+      source: 'https://example.com',
+      author: "O'Brien",
+      dateImported: '2026-03-03'
+    })
+    expect(result).toContain('author: "O\'Brien"')
+  })
+
+  it('escapes YAML boolean keyword in title', () => {
+    const result = generateFrontmatter({
+      source: 'https://example.com',
+      title: 'True',
+      dateImported: '2026-03-03'
+    })
+    expect(result).toContain('title: "True"')
   })
 })

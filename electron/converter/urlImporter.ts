@@ -61,14 +61,26 @@ interface FrontmatterData {
  *
  * Returns the frontmatter block with trailing double newline, ready
  * to be prepended to a markdown document body.
+ *
+ * NOTE: A more comprehensive frontmatter module exists at src/lib/frontmatter.ts
+ * which handles round-trip parsing and serialization via js-yaml. This simpler
+ * generator exists separately because URL imports only need one-way generation
+ * of a known set of fields — pulling in js-yaml and the full extract/inject
+ * machinery would be unnecessary overhead for this use case.
  */
 export function generateFrontmatter(data: FrontmatterData): string {
   const lines: string[] = ['---']
 
   // YAML requires quoting strings that contain special characters like colons,
   // brackets, etc. URLs are safe unquoted in YAML, so we only escape text fields.
+  // Also catches internal quotes (e.g., O'Brien) and bare boolean/null keywords
+  // that YAML parsers would interpret as non-string types.
+  const YAML_BARE_KEYWORDS = /^(true|false|yes|no|on|off|null)$/i
   const escapeYaml = (val: string) => {
-    if (/[:#{}[\]&*?|>!@`]/.test(val) || val.startsWith('"') || val.startsWith("'")) {
+    if (
+      /[:#{}[\]&*?|>!@`'"]/.test(val) ||
+      YAML_BARE_KEYWORDS.test(val)
+    ) {
       return `"${val.replace(/"/g, '\\"')}"`
     }
     return val
