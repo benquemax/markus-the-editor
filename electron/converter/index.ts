@@ -10,6 +10,7 @@
  * - converter:importFile      — import a known file path (drag-and-drop)
  * - converter:importWithDialog — show open dialog, then import
  * - converter:exportFile       — export content to DOCX/ODT/HTML
+ * - converter:importUrl        — fetch web page by URL, convert to markdown
  */
 
 import { IpcMain, BrowserWindow, shell } from 'electron'
@@ -17,6 +18,7 @@ import path from 'path'
 import fs from 'fs/promises'
 import { importFile, IMPORTABLE_EXTENSIONS } from './importers'
 import { exportDocx, exportOdt, exportHtml } from './exporters'
+import { importUrl } from './urlImporter'
 
 type DialogResult<T> = T
 type OpenDialogFn = (options: Electron.OpenDialogOptions) => Promise<DialogResult<Electron.OpenDialogReturnValue>>
@@ -269,6 +271,65 @@ export function setupConverterHandlers({
       return { success: true }
     } catch (error) {
       return { success: false, error: String(error) }
+    }
+  })
+
+  /**
+   * Import a web page by URL. Fetches HTML, extracts article content using
+   * Defuddle, converts to markdown with frontmatter metadata.
+   *
+   * When targetDir is provided (folder drop), shows save dialog and writes file.
+   * When targetDir is null (editor drop / menu), returns markdown for an unsaved tab.
+   */
+  ipcMain.handle('converter:importUrl', async (_, url: string, targetDir?: string) => {
+    try {
+      console.log(`[Converter] Importing URL: ${url}` + (targetDir ? ` → target dir: ${targetDir}` : ''))
+
+      const result = await importUrl(url)
+
+      if (targetDir) {
+        // Folder drop flow: save to disk with slug-based default filename
+        const defaultPath = path.join(targetDir, `${result.slug}.md`)
+
+        const saveResult = await showSaveDialog({
+          title: 'Save imported page as...',
+          defaultPath,
+          filters: [
+            { name: 'Markdown', extensions: ['md'] },
+            { name: 'All Files', extensions: ['*'] }
+          ]
+        })
+
+        if (saveResult.canceled || !saveResult.filePath) {
+          return { success: false, error: 'Cancelled' }
+        }
+
+        await fs.writeFile(saveResult.filePath, result.markdown, 'utf-8')
+        setCurrentFilePath(saveResult.filePath)
+
+        // Open the saved file in the editor
+        const mainWindow = getMainWindow()
+        if (mainWindow) {
+          mainWindow.webContents.send('file:opened', {
+            content: result.markdown,
+            filePath: saveResult.filePath
+          })
+        }
+
+        return { success: true, filePath: saveResult.filePath }
+      } else {
+        // Editor drop / menu flow: return markdown for unsaved tab
+        return { success: true, markdown: result.markdown, title: result.title }
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      console.error('[Converter] URL import failed:', error instanceof Error ? error.stack || msg : msg)
+      await showMessageBox({
+        type: 'error',
+        title: 'URL Import Failed',
+        message: `Could not import page:\n${msg}`
+      })
+      return { success: false, error: msg }
     }
   })
 }
