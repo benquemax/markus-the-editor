@@ -142,6 +142,7 @@ function createWindow() {
     onSaveAsFile: () => handleSaveAsFile(),
     onPrintToPdf: () => handlePrintToPdf(),
     onImport: () => mainWindow?.webContents.send('menu:import'),
+    onImportUrl: () => mainWindow?.webContents.send('menu:importUrl'),
     onExportDocx: () => mainWindow?.webContents.send('menu:exportDocx'),
     onExportOdt: () => mainWindow?.webContents.send('menu:exportOdt'),
     onExportHtml: () => mainWindow?.webContents.send('menu:exportHtml'),
