@@ -43,6 +43,9 @@ export function useFileExplorer({ rootPath, onOpenFile, activeFilePath }: UseFil
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Incremented after each refresh so the reveal useEffect re-runs
+  // on the fresh tree data (e.g., after a URL import adds a new file)
+  const [refreshGeneration, setRefreshGeneration] = useState(0)
 
   // Use refs for git status map to avoid recreating the refresh function
   const gitStatusMapRef = useRef<Map<string, GitStatus>>(new Map())
@@ -127,6 +130,9 @@ export function useFileExplorer({ rootPath, onOpenFile, activeFilePath }: UseFil
    */
   const refresh = useCallback(async () => {
     await loadRoot()
+    // Signal the reveal useEffect to re-run so the active file is
+    // re-revealed on the fresh tree (needed after file imports, etc.)
+    setRefreshGeneration(prev => prev + 1)
   }, [loadRoot])
 
   /**
@@ -292,7 +298,7 @@ export function useFileExplorer({ rootPath, onOpenFile, activeFilePath }: UseFil
     if (activeFilePath && rootPath && activeFilePath.startsWith(rootPath + '/')) {
       revealFile(activeFilePath)
     }
-  }, [activeFilePath, rootPath, revealFile])
+  }, [activeFilePath, rootPath, revealFile, refreshGeneration])
 
   return {
     tree,
