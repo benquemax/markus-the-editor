@@ -25,13 +25,15 @@ export default defineConfig({
               output: {
                 entryFileNames: 'main.js'
               },
-              // Delete stale output before each rebuild. Without this, the dev
+              // Truncate stale output before each rebuild. Without this, the dev
               // watcher can leave trailing bytes from a previous larger build,
-              // producing a SyntaxError on load.
+              // producing a SyntaxError on load. Writing an empty file (not just
+              // unlinking) is more reliable: it avoids race conditions where Rollup
+              // opens the file with a non-truncating mode on some platforms.
               plugins: [{
                 name: 'clean-main',
                 buildStart() {
-                  try { fs.unlinkSync('dist-electron/main.js') } catch { /* ignore */ }
+                  try { fs.writeFileSync('dist-electron/main.js', '') } catch { /* ignore */ }
                 }
               }]
             }
@@ -57,7 +59,7 @@ export default defineConfig({
               plugins: [{
                 name: 'clean-preload',
                 buildStart() {
-                  try { fs.unlinkSync('dist-electron/preload.js') } catch { /* ignore */ }
+                  try { fs.writeFileSync('dist-electron/preload.js', '') } catch { /* ignore */ }
                 }
               }]
             }
