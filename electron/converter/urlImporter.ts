@@ -96,3 +96,61 @@ export function generateFrontmatter(data: FrontmatterData): string {
   lines.push('---')
   return lines.join('\n') + '\n\n'
 }
+
+export interface ImportUrlResult {
+  markdown: string
+  title: string
+  slug: string
+}
+
+/**
+ * Fetches a web page and converts it to clean markdown using Defuddle
+ * for article extraction. Returns markdown with frontmatter, page title,
+ * and a filename slug.
+ *
+ * Defuddle is Mozilla's Readability successor — it strips navigation,
+ * ads, and boilerplate, keeping only the article content. The `markdown: true`
+ * option makes it return Markdown directly instead of HTML.
+ */
+export async function importUrl(url: string): Promise<ImportUrlResult> {
+  // Defuddle is ESM-only, use dynamic import (same pattern as pdfjs-dist in importers.ts)
+  const { Defuddle } = await import('defuddle/node')
+
+  const response = await fetch(url, {
+    headers: {
+      // Identify ourselves honestly — some sites block unknown user agents
+      'User-Agent': 'Mozilla/5.0 (compatible; Markus Editor)'
+    }
+  })
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch URL: ${response.status} ${response.statusText}`)
+  }
+
+  const contentType = response.headers.get('content-type') || ''
+  if (!contentType.includes('text/html') && !contentType.includes('application/xhtml')) {
+    throw new Error(`URL did not return HTML (got ${contentType})`)
+  }
+
+  const html = await response.text()
+
+  const result = await Defuddle(html, url, { markdown: true })
+
+  const title = result.title || 'Untitled'
+  const slug = extractSlug(url) || slugifyTitle(title)
+  // ISO date without time — matches the YAML date scalar convention
+  const dateImported = new Date().toISOString().split('T')[0]
+
+  const frontmatter = generateFrontmatter({
+    source: url,
+    title: result.title || undefined,
+    author: result.author || undefined,
+    dateImported
+  })
+
+  // When markdown: true is passed, Defuddle puts the converted markdown
+  // into result.content (overwriting the original HTML)
+  const markdown = frontmatter + (result.content || '')
+
+  return { markdown, title, slug }
+}
