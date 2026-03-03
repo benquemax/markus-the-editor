@@ -15,7 +15,7 @@ export type FileType = 'markdown' | 'image' | 'video' | 'json' | 'html' | 'unkno
 /**
  * Extension mappings for each file type.
  */
-const MARKDOWN_EXTENSIONS = ['md', 'markdown']
+const MARKDOWN_EXTENSIONS = ['md', 'markdown', 'mdx']
 const IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico']
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'mov', 'avi', 'mkv', 'ogg']
 const JSON_EXTENSIONS = ['json']
