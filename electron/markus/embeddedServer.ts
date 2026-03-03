@@ -13,7 +13,9 @@
 import path from 'path'
 import http from 'http'
 
-const DEFAULT_PORT = 3847
+// Allow override via MARKUS_PORT for dev instances to avoid colliding
+// with an installed Markus app already running on 3847
+const DEFAULT_PORT = parseInt(process.env.MARKUS_PORT || '3847', 10)
 
 // MarkusServer interface matches the export from server.ts
 interface MarkusServer {

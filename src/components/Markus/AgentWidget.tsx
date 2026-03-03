@@ -93,8 +93,10 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
   // Refs to capture latest state for event handlers
   const streamingContentRef = useRef(streamingContent)
   const streamingToolCallsRef = useRef(streamingToolCalls)
+  const previousIterationsRef = useRef(previousIterations)
   streamingContentRef.current = streamingContent
   streamingToolCallsRef.current = streamingToolCalls
+  previousIterationsRef.current = previousIterations
 
   // Multi-agent state (placeholder - will be added to server later)
   const [agentStatuses] = useState<AgentStatusInfo[]>([])
@@ -267,22 +269,26 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
     }
   }, [conversationInfo])
 
-  // Handle WebSocket message events
+  // Handle WebSocket message events.
+  // Refs are updated synchronously here (not just via React renders) so that
+  // back-to-back messages in the same tick (e.g. chunk + complete) see
+  // the latest accumulated state without waiting for a React re-render.
   const handleMessageEvent = useCallback((event: MessageEvent) => {
     switch (event.type) {
       case 'chunk':
-        setStreamingContent(prev => prev + event.content)
+        streamingContentRef.current += event.content
+        setStreamingContent(streamingContentRef.current)
         scrollToBottom()
         break
 
       case 'iteration_started':
         // Save current content to history and start fresh
-        setStreamingContent(prev => {
-          if (prev.trim()) {
-            setPreviousIterations(history => [...history, prev])
-          }
-          return ''
-        })
+        if (streamingContentRef.current.trim()) {
+          previousIterationsRef.current = [...previousIterationsRef.current, streamingContentRef.current]
+          setPreviousIterations(previousIterationsRef.current)
+        }
+        streamingContentRef.current = ''
+        setStreamingContent('')
         break
 
       case 'tool_started':
@@ -290,23 +296,29 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
           // Deduplicate by ID to prevent doubled tool calls
           const existingIds = new Set(prev.map(tc => tc.id))
           if (existingIds.has(event.toolCall.id)) return prev
-          return [...prev, {
+          const updated = [...prev, {
             id: event.toolCall.id,
             name: event.toolCall.name,
             arguments: event.toolCall.arguments,
             status: 'executing' as const,
             startedAt: Date.now()
           }]
+          streamingToolCallsRef.current = updated
+          return updated
         })
         scrollToBottom()
         break
 
       case 'tool_complete':
-        setStreamingToolCalls(prev => prev.map(tc =>
-          tc.id === event.toolCallId
-            ? { ...tc, status: 'complete' as const, result: event.result }
-            : tc
-        ))
+        setStreamingToolCalls(prev => {
+          const updated = prev.map(tc =>
+            tc.id === event.toolCallId
+              ? { ...tc, status: 'complete' as const, result: event.result }
+              : tc
+          )
+          streamingToolCallsRef.current = updated
+          return updated
+        })
         break
 
       case 'blocking':
@@ -320,9 +332,14 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
 
       case 'complete': {
         setIsLoading(false)
-        // Use refs to get the latest state (avoiding stale closure)
-        const finalContent = streamingContentRef.current
+        // Refs are up-to-date because chunk/iteration handlers update them
+        // synchronously (see above). Combine previousIterations with current
+        // streamingContent so text from earlier iterations isn't discarded.
+        const prevContent = previousIterationsRef.current.join('\n\n')
+        const currentContent = streamingContentRef.current
+        const finalContent = [prevContent, currentContent].filter(s => s.trim()).join('\n\n')
         const finalToolCalls = streamingToolCallsRef.current
+
         // Add assistant message to conversation
         if (finalContent.trim() || finalToolCalls.length > 0) {
           setConversation(prev => {
@@ -344,6 +361,10 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
             }
           })
         }
+        // Reset all streaming state and refs
+        streamingContentRef.current = ''
+        streamingToolCallsRef.current = []
+        previousIterationsRef.current = []
         setStreamingContent('')
         setStreamingToolCalls([])
         setPreviousIterations([])
@@ -353,6 +374,9 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
 
       case 'error':
         setIsLoading(false)
+        streamingContentRef.current = ''
+        streamingToolCallsRef.current = []
+        previousIterationsRef.current = []
         setStreamingContent('')
         setStreamingToolCalls([])
         setPreviousIterations([])
@@ -661,45 +685,66 @@ export function AgentWidget({ workspaceFolders }: AgentWidgetProps) {
           />
         )}
 
-        {/* Tool calls - only show consult_boss messages */}
+        {/* Live tool activity during streaming */}
         {isLoading && streamingToolCalls.length > 0 && (
           <div className="space-y-2">
-            {streamingToolCalls.map(toolCall => {
-              if (toolCall.name === 'consult_boss') {
-                if (toolCall.status === 'complete') {
-                  const args = toolCall.arguments as { message?: string; type?: string }
-                  const message = args.message || ''
-                  const type = args.type || 'info'
-                  return (
+            {/* consult_boss messages */}
+            {streamingToolCalls
+              .filter(tc => tc.name === 'consult_boss' && tc.status === 'complete')
+              .map(toolCall => {
+                const args = toolCall.arguments as { message?: string; type?: string }
+                const message = args.message || ''
+                const type = args.type || 'info'
+                return (
+                  <div
+                    key={toolCall.id}
+                    className={`p-3 rounded-lg border ${
+                      type === 'success' ? 'bg-green-500/5 border-green-500/20' :
+                      type === 'warning' ? 'bg-amber-500/5 border-amber-500/20' :
+                      type === 'error' ? 'bg-red-500/5 border-red-500/20' :
+                      'bg-blue-500/5 border-blue-500/20'
+                    }`}
+                  >
                     <div
-                      key={toolCall.id}
-                      className={`p-3 rounded-lg border ${
-                        type === 'success' ? 'bg-green-500/5 border-green-500/20' :
-                        type === 'warning' ? 'bg-amber-500/5 border-amber-500/20' :
-                        type === 'error' ? 'bg-red-500/5 border-red-500/20' :
-                        'bg-blue-500/5 border-blue-500/20'
-                      }`}
-                    >
-                      <div
-                        className="prose prose-sm max-w-none dark:prose-invert"
-                        dangerouslySetInnerHTML={{ __html: md.render(message) }}
-                      />
-                    </div>
-                  )
-                }
-                return null
-              }
-              return null
-            })}
+                      className="prose prose-sm max-w-none dark:prose-invert"
+                      dangerouslySetInnerHTML={{ __html: md.render(message) }}
+                    />
+                  </div>
+                )
+              })}
 
-            {/* Working indicator */}
-            {streamingToolCalls.some(tc =>
-              tc.status === 'executing' &&
-              !['consult_boss', 'update_tasks', 'ask_user', 'request_task_approval'].includes(tc.name)
-            ) && (
-              <div className="flex items-center gap-2 text-xs text-muted-foreground px-2 py-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span>Working...</span>
+            {/* Agency SDK tool activity — compact scrollable list */}
+            {streamingToolCalls.some(tc => !['consult_boss', 'update_tasks', 'ask_user', 'request_task_approval'].includes(tc.name)) && (
+              <div className="rounded border border-border/30 bg-muted/20 overflow-hidden text-xs">
+                <div className="flex items-center gap-2 px-2 py-1.5 text-muted-foreground border-b border-border/20">
+                  <Loader2 className="w-3 h-3 animate-spin flex-shrink-0" />
+                  <span className="font-medium">Running tools</span>
+                </div>
+                <div className="divide-y divide-border/20 max-h-36 overflow-y-auto">
+                  {streamingToolCalls
+                    .filter(tc => !['consult_boss', 'update_tasks', 'ask_user', 'request_task_approval'].includes(tc.name))
+                    .map(tc => {
+                      const args = (tc.arguments as Record<string, unknown>) || {}
+                      let summary = ''
+                      if (tc.name === 'Bash') summary = String(args.command || '').slice(0, 55)
+                      else if (tc.name === 'Read') summary = String(args.file_path || '').slice(0, 55)
+                      else if (tc.name === 'Write' || tc.name === 'Edit') summary = String(args.file_path || '').slice(0, 55)
+                      else if (tc.name === 'Glob' || tc.name === 'Grep') summary = String(args.pattern || '').slice(0, 55)
+                      else if (tc.name === 'LS') summary = String(args.path || '.').slice(0, 55)
+                      else if (tc.name === 'Task') summary = String(args.description || '').slice(0, 55)
+
+                      return (
+                        <div key={tc.id} className="flex items-center gap-2 px-2 py-1 text-muted-foreground">
+                          {tc.status === 'executing'
+                            ? <Loader2 className="w-2.5 h-2.5 animate-spin flex-shrink-0 text-blue-400" />
+                            : <div className="w-2.5 h-2.5 rounded-full bg-green-500/60 flex-shrink-0" />
+                          }
+                          <span className="font-medium flex-shrink-0">{tc.name}</span>
+                          {summary && <span className="truncate text-muted-foreground/60 font-mono">{summary}</span>}
+                        </div>
+                      )
+                    })}
+                </div>
               </div>
             )}
           </div>

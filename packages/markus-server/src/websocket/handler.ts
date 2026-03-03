@@ -11,6 +11,7 @@ import type { ConversationManager } from '../conversationManager'
 import type { ClientMessage } from '../types'
 import { WebSocketTransport } from './transport'
 import { readSettings, validateSettings, ensureDirectories } from '../settings'
+import { runAgencyQuery } from '../agency'
 
 // Core imports - these use relative paths to electron/markus
 import {
@@ -231,6 +232,50 @@ async function handleChatMessage(
 
   const workspaceFolders = conversation.workspaceFolders
   const workspaceId = getWorkspaceId(workspaceFolders)
+
+  // ---- Agency API Backend ----
+  // When enabled, the Claude Agent SDK handles orchestration and subagents
+  // instead of the legacy thought loop.
+  if ((settings as { agency?: { enabled: boolean; mode?: string; backend?: string } }).agency?.enabled) {
+    const agencySettings = (settings as { agency: { enabled: boolean; mode?: string; backend?: string } }).agency
+    const agencyMode = (agencySettings.mode === 'programming' ? 'programming' : 'writing') as 'writing' | 'programming'
+    const agencyBackend = agencySettings.backend || 'local'
+    const apiKey = settings.llm.apiKey || ''
+
+    // Only require API key for cloud backends
+    if (agencyBackend === 'kimi-cloud' && !apiKey) {
+      transport.sendError('Kimi cloud backend requires an API key (llm.apiKey in settings)')
+      return
+    }
+
+    const abortController = conversationManager.startProcessing(conversationId)
+    if (!abortController) {
+      transport.sendError('Failed to start processing')
+      return
+    }
+
+    try {
+      console.log(`[WebSocket] Agency backend: ${agencyMode} mode, ${agencyBackend} backend for ${conversationId}`)
+      const result = await runAgencyQuery(
+        content,
+        workspaceFolders[0] || process.cwd(),
+        agencyMode,
+        apiKey,
+        transport,
+        abortController.signal,
+        agencyBackend
+      )
+      transport.sendComplete(result.waitingForInput)
+    } catch (error) {
+      console.error('[WebSocket] Agency error:', error)
+      transport.sendError(error instanceof Error ? error.message : 'Agency backend error')
+    } finally {
+      if (conversationManager.isProcessing(conversationId)) {
+        conversationManager.finishProcessing(conversationId)
+      }
+    }
+    return
+  }
 
   // Lazy-initialize multi-agent system:
   // 1. Per-conversation agents (from API-defined agent definitions) take priority

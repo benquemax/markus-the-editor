@@ -42,6 +42,15 @@ export interface FullMarkusSettings extends MarkusSettings {
     endpoint: string
     model: string
   }>
+  /** Agency API backend (Claude Agent SDK). When enabled, replaces the
+   *  legacy thought loop with SDK-based orchestration and subagents. */
+  agency?: {
+    enabled: boolean
+    /** 'writing' or 'programming' — determines which agents are used */
+    mode?: string
+    /** 'local' (ferocitee LLM servers) or 'kimi-cloud' */
+    backend?: string
+  }
 }
 
 export interface AgentSettings {
@@ -137,7 +146,8 @@ export async function readSettings(): Promise<FullMarkusSettings> {
         ...DEFAULT_SETTINGS.rag,
         ...parsed.rag
       } : DEFAULT_SETTINGS.rag,
-      modelPresets: parsed?.modelPresets
+      modelPresets: parsed?.modelPresets,
+      agency: parsed?.agency
     }
 
     console.log('[Settings] Loaded settings from', settingsPath)

@@ -44,7 +44,12 @@ async function build() {
       'http', 'https', 'net', 'url', 'stream', 'zlib', 'events',
       'buffer', 'querystring', 'string_decoder', 'util',
       // External npm dependencies — resolved at runtime from node_modules
-      'express', 'ws', 'uuid', 'js-yaml', 'fastest-levenshtein'
+      'express', 'ws', 'uuid', 'js-yaml', 'fastest-levenshtein',
+      // Agency API dependencies (Claude Agent SDK + schema validation)
+      '@anthropic-ai/claude-agent-sdk', 'zod',
+      // Electron — resolved at runtime when loaded in Electron's main process.
+      // Pulled in transitively via agency tools → tasks → settings
+      'electron'
     ],
     logLevel: 'info'
   })
