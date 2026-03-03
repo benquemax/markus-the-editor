@@ -21,7 +21,7 @@ export default defineConfig({
               formats: ['cjs']
             },
             rollupOptions: {
-              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty', 'mammoth', 'word-extractor', 'turndown', 'turndown-plugin-gfm', 'html-to-docx', 'pdfjs-dist/legacy/build/pdf.mjs'],
+              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty', 'mammoth', 'word-extractor', 'turndown', 'turndown-plugin-gfm', 'html-to-docx', 'pdfjs-dist/legacy/build/pdf.mjs', 'defuddle', 'defuddle/node', 'canvas'],
               output: {
                 entryFileNames: 'main.js'
               },
