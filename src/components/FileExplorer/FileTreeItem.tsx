@@ -138,6 +138,19 @@ export function FileTreeItem({
     e.stopPropagation()
     setIsDragOver(false)
 
+    // Check for URL drops (e.g., dragging a link from a browser).
+    // Import the webpage as markdown into this folder.
+    const droppedUrl = e.dataTransfer?.getData('text/uri-list')
+      || e.dataTransfer?.getData('text/plain')
+      || ''
+    const urlMatch = droppedUrl.trim().split('\n')[0]
+    if (/^https?:\/\/.+/i.test(urlMatch)) {
+      // Main process handles save dialog with slug-based filename
+      await window.electron.converter.importUrl(urlMatch, node.path)
+      onFileDrop?.(node.path)
+      return
+    }
+
     // Extensions that should trigger conversion instead of a raw copy,
     // since these formats would be garbled if opened as-is
     const IMPORTABLE_EXTENSIONS = ['.docx', '.doc', '.odt', '.pdf']

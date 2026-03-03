@@ -13,6 +13,7 @@ import { QuakeTerminal } from './components/Terminal'
 import { SettingsView } from './components/SettingsView/SettingsView'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
+import { UrlInputDialog } from './components/UrlInputDialog'
 import { cn } from './lib/utils'
 import { useLayoutMode } from './lib/useLayoutMode'
 import { useCommentAuthor } from './lib/useCommentAuthor'
@@ -51,6 +52,7 @@ function App() {
   // Default to visible — same rationale as showWorkspace above
   const [showAgent, setShowAgent] = useState(true)
   const [showSettings, setShowSettings] = useState(false)
+  const [showUrlImport, setShowUrlImport] = useState(false)
   const [showTerminal, setShowTerminal] = useState(false)
   // Default to 50% of viewport height
   const [terminalHeight, setTerminalHeight] = useState(() => Math.floor(window.innerHeight * 0.5))
@@ -640,6 +642,30 @@ function App() {
     await window.electron.converter.importWithDialog()
   }, [])
 
+  // Open a URL import result as a new unsaved tab
+  const openUrlAsTab = useCallback((markdown: string, title: string) => {
+    const newTab: Tab = {
+      id: `url-import-${Date.now()}`,
+      filePath: null,
+      title,
+      content: markdown,
+      savedContent: '',
+      isDirty: true,
+      fileType: 'markdown' as const
+    }
+    setTabs(prev => [...prev, newTab])
+    setActiveTabId(newTab.id)
+  }, [])
+
+  // Handle URL import: fetch webpage, convert to markdown, open as unsaved tab
+  const handleImportUrl = useCallback(async (url: string) => {
+    setShowUrlImport(false)
+    const result = await window.electron.converter.importUrl(url)
+    if (result.success && result.markdown) {
+      openUrlAsTab(result.markdown, result.title || 'Imported Page')
+    }
+  }, [openUrlAsTab])
+
   // Handle export: gets current content and sends to main process
   const handleExport = useCallback(async (format: 'docx' | 'odt' | 'html') => {
     const currentContent = editorRef.current?.getContent() || content
@@ -673,6 +699,7 @@ function App() {
 
     // Import/export menu events
     const unsubImport = window.electron.converter.onImport(handleImport)
+    const unsubImportUrl = window.electron.converter.onImportUrl(() => setShowUrlImport(true))
     const unsubExportDocx = window.electron.converter.onExportDocx(() => handleExport('docx'))
     const unsubExportOdt = window.electron.converter.onExportOdt(() => handleExport('odt'))
     const unsubExportHtml = window.electron.converter.onExportHtml(() => handleExport('html'))
@@ -690,11 +717,12 @@ function App() {
       unsubOpenSettings()
       unsubToggleTerminal()
       unsubImport()
+      unsubImportUrl()
       unsubExportDocx()
       unsubExportOdt()
       unsubExportHtml()
     }
-  }, [addFolderToWorkspace, handleImport, handleExport])
+  }, [addFolderToWorkspace, handleImport, handleImportUrl, handleExport])
 
   // Auto-open agent panel when @markus is mentioned in a comment
   useEffect(() => {
@@ -792,6 +820,20 @@ function App() {
       e.preventDefault()
       e.stopPropagation()
 
+      // Check for URL drops (e.g., dragging a link from a browser).
+      // When dragging a URL, dataTransfer has text but no files.
+      const droppedUrl = e.dataTransfer?.getData('text/uri-list')
+        || e.dataTransfer?.getData('text/plain')
+        || ''
+      const urlMatch = droppedUrl.trim().split('\n')[0]
+      if (/^https?:\/\/.+/i.test(urlMatch)) {
+        const result = await window.electron.converter.importUrl(urlMatch)
+        if (result.success && result.markdown) {
+          openUrlAsTab(result.markdown, result.title || 'Imported Page')
+        }
+        return
+      }
+
       const items = Array.from(e.dataTransfer?.files || [])
       if (items.length === 0) return
 
@@ -845,7 +887,7 @@ function App() {
       document.removeEventListener('drop', handleDrop)
       document.removeEventListener('dragover', handleDragOver)
     }
-  }, [addFolderToWorkspace])
+  }, [addFolderToWorkspace, openUrlAsTab])
 
   const handleContentChange = useCallback((newContent: string, newWordCount: number, newCharCount: number) => {
     if (activeTabId) {
@@ -1135,6 +1177,12 @@ function App() {
       <SettingsView
         open={showSettings}
         onOpenChange={setShowSettings}
+      />
+
+      <UrlInputDialog
+        isOpen={showUrlImport}
+        onSubmit={handleImportUrl}
+        onClose={() => setShowUrlImport(false)}
       />
 
       {/* Conflict resolver modal */}
