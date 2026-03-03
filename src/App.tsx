@@ -921,6 +921,7 @@ function App() {
     { id: 'theme-system', label: 'System Theme', action: () => setTheme('system') },
     { id: 'addComment', label: 'Add Comment', shortcut: 'Ctrl+Alt+M', action: () => editorRef.current?.addComment() },
     { id: 'toggleComments', label: 'Toggle Comments', action: () => editorRef.current?.toggleComments() },
+    { id: 'toggleMetadata', label: 'Toggle Metadata', action: () => editorRef.current?.toggleMetadata() },
     { id: 'terminal', label: 'Toggle Terminal', shortcut: 'Ctrl+Shift+T', action: () => setShowTerminal(v => !v) },
     { id: 'settings', label: 'Settings', shortcut: 'Ctrl+,', action: () => setShowSettings(true) },
     { id: 'import', label: 'Import Document...', shortcut: 'Ctrl+Shift+I', action: handleImport },
