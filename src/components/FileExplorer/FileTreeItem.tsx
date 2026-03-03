@@ -11,6 +11,7 @@ import { ChevronRight, ChevronDown, Folder, File, FileText, Loader2, FilePlus, F
 import { cn } from '../../lib/utils'
 import { FileTreeNode, GitStatus } from '../../lib/fileTree'
 import { getFileType } from '../../lib/fileTypes'
+import { extractDroppedUrl } from '../../lib/urlUtils'
 
 interface FileTreeItemProps {
   node: FileTreeNode
@@ -140,13 +141,10 @@ export function FileTreeItem({
 
     // Check for URL drops (e.g., dragging a link from a browser).
     // Import the webpage as markdown into this folder.
-    const droppedUrl = e.dataTransfer?.getData('text/uri-list')
-      || e.dataTransfer?.getData('text/plain')
-      || ''
-    const urlMatch = droppedUrl.trim().split('\n')[0]
-    if (/^https?:\/\/.+/i.test(urlMatch)) {
+    const droppedUrl = extractDroppedUrl(e.dataTransfer)
+    if (droppedUrl) {
       // Main process handles save dialog with slug-based filename
-      const result = await window.electron.converter.importUrl(urlMatch, node.path)
+      const result = await window.electron.converter.importUrl(droppedUrl, node.path)
       if (result.success) {
         onFileDrop?.(node.path)
       }

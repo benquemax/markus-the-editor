@@ -14,6 +14,7 @@ import { SettingsView } from './components/SettingsView/SettingsView'
 import { FileConflict, parseConflicts } from './lib/conflictParser'
 import { getFileType, isSupportedFile } from './lib/fileTypes'
 import { UrlInputDialog } from './components/UrlInputDialog'
+import { extractDroppedUrl } from './lib/urlUtils'
 import { cn } from './lib/utils'
 import { useLayoutMode } from './lib/useLayoutMode'
 import { useCommentAuthor } from './lib/useCommentAuthor'
@@ -840,12 +841,9 @@ function App() {
 
       // Check for URL drops (e.g., dragging a link from a browser).
       // When dragging a URL, dataTransfer has text but no files.
-      const droppedUrl = e.dataTransfer?.getData('text/uri-list')
-        || e.dataTransfer?.getData('text/plain')
-        || ''
-      const urlMatch = droppedUrl.trim().split('\n')[0]
-      if (/^https?:\/\/.+/i.test(urlMatch)) {
-        await importUrlToTab(urlMatch)
+      const droppedUrl = extractDroppedUrl(e.dataTransfer)
+      if (droppedUrl) {
+        await importUrlToTab(droppedUrl)
         return
       }
 

@@ -9,6 +9,7 @@
  */
 
 import { useState, useEffect, useRef } from 'react'
+import { isHttpUrl } from '../lib/urlUtils'
 
 interface UrlInputDialogProps {
   isOpen: boolean
@@ -41,7 +42,7 @@ export function UrlInputDialog({ isOpen, onSubmit, onClose }: UrlInputDialogProp
       return
     }
 
-    if (!/^https?:\/\/.+/i.test(trimmed)) {
+    if (!isHttpUrl(trimmed)) {
       setError('Please enter a valid URL starting with http:// or https://')
       return
     }

@@ -113,7 +113,7 @@ export interface ImportUrlResult {
  * option makes it return Markdown directly instead of HTML.
  */
 export async function importUrl(url: string): Promise<ImportUrlResult> {
-  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+  if (!/^https?:\/\/.+/i.test(url)) {
     throw new Error('Only HTTP and HTTPS URLs are supported')
   }
 
