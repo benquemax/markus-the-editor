@@ -62,10 +62,13 @@ export function createDefaultConfig(): AgencyConfig {
 
     models: {
       opus: {
-        modelId: 'devstral-small-2:24b-instruct-2512-q8_0',
+        modelId: 'huihui_ai/devstral-abliterated:latest',
         serverUrl: 'http://ferocitee:11434',
-        contextWindow: 74880,
-        description: 'Devstral 24B Q8 on Ollama CPU — best reasoning during dev'
+        contextWindow: 131072,
+        // devstral-abliterated on Ollama CPU — tool calling works correctly here.
+        // vllama GPU lists this model but its tool call parser produces empty tool_calls[]
+        // (finish_reason=tool_calls with no actual calls), so Ollama CPU is used instead.
+        description: 'Devstral Abliterated on Ollama CPU — best reasoning, tool calling works'
       },
       sonnet: {
         modelId: 'qwen3-coder-next:latest',

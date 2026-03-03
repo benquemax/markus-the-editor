@@ -36,9 +36,9 @@ const MODELS = {
     description: 'Qwen3 Coder Next — good all-rounder'
   },
   opus: {
-    id: 'devstral-small-2:24b-instruct-2512-q8_0',
+    id: 'huihui_ai/devstral-abliterated:latest',
     server: 'ollama',
-    description: 'Devstral 24B Q8 — best reasoning'
+    description: 'Devstral Abliterated — best reasoning (vllama tool calls broken)'
   }
 }
 

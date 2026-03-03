@@ -47,6 +47,10 @@ function ensureAgency(apiKey: string, backend: string = 'local'): AgencyConfig {
   // Start the format adapter (Anthropic ↔ OpenAI proxy)
   createAdapter(config)
   console.log(`[Agency] Format adapter started on port ${config.adapterPort}`)
+  console.log(`[Agency] Models:`)
+  console.log(`[Agency]   opus   → ${config.models.opus.modelId} @ ${config.models.opus.serverUrl}`)
+  console.log(`[Agency]   sonnet → ${config.models.sonnet.modelId} @ ${config.models.sonnet.serverUrl}`)
+  console.log(`[Agency]   haiku  → ${config.models.haiku.modelId} @ ${config.models.haiku.serverUrl}`)
 
   // Allow SDK to spawn subprocess even when running inside Claude Code
   delete process.env.CLAUDECODE
@@ -170,8 +174,8 @@ export async function runAgencyQuery(
       const msgType = (msg as { type: string }).type
       const msgSubtype = (msg as { subtype?: string }).subtype
 
-      // Log message types for debugging (sparse after initial burst)
-      if (messageCount <= 5 || messageCount % 20 === 0) {
+      // Log every message type — sparse for high-frequency types, always for key events
+      if (messageCount <= 5 || messageCount % 20 === 0 || ['result', 'system'].includes(msgType)) {
         console.log(`[Agency] msg #${messageCount}: ${msgType}${msgSubtype ? `/${msgSubtype}` : ''}`)
       }
 
@@ -183,8 +187,16 @@ export async function runAgencyQuery(
           // clears streamingContent in the UI, which drops accumulated text.
           // All text chunks accumulate into one streamingContent block;
           // the handler's sendComplete() finalizes it as the assistant message.
-          const message = (msg as { message?: { content?: Array<{ type: string; text?: string; name?: string; id?: string; input?: unknown }> } }).message
+          const rawMsg = msg as { message?: { model?: string; content?: Array<{ type: string; text?: string; name?: string; id?: string; input?: unknown }> }; agent_name?: string }
+          const message = rawMsg.message
           if (!message?.content) break
+
+          // Log which model and agent produced this message
+          const agentLabel = rawMsg.agent_name ? ` [agent: ${rawMsg.agent_name}]` : ' [orchestrator]'
+          const modelLabel = message.model ? ` (${message.model})` : ''
+          const toolNames = message.content.filter(b => b.type === 'tool_use').map(b => b.name).join(', ')
+          const summary = toolNames ? `tools: ${toolNames}` : `text: ${message.content.filter(b => b.type === 'text').map(b => b.text?.slice(0, 40)).join(' ').trim()}`
+          console.log(`[Agency] assistant turn #${turnCount + 1}${agentLabel}${modelLabel} — ${summary}`)
 
           // Add paragraph separator between multi-turn assistant responses
           // so they don't run together as one wall of text
@@ -252,9 +264,15 @@ export async function runAgencyQuery(
         }
 
         case 'system': {
-          // System notifications (init, status, task events, etc.)
+          // System notifications (init, agent lifecycle, status, etc.)
           if (msgSubtype === 'init') {
             console.log('[Agency] SDK initialized')
+          } else {
+            // Log all system messages to catch agent start/stop events
+            const sysMsg = msg as Record<string, unknown>
+            const agentName = (sysMsg.agent_name || sysMsg.agentName) as string | undefined
+            const extra = agentName ? ` [agent: ${agentName}]` : ''
+            console.log(`[Agency] system/${msgSubtype}${extra}`)
           }
           break
         }
