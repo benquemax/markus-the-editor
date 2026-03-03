@@ -831,6 +831,10 @@ function App() {
     const IMPORTABLE_EXTENSIONS = ['.docx', '.doc', '.odt', '.pdf']
 
     const handleDrop = async (e: DragEvent) => {
+      // Skip if already handled by a nested handler (e.g., FileTreeItem's onDrop).
+      // React's stopPropagation only stops synthetic events, but preventDefault
+      // propagates to the native event — so we use it as a signal.
+      if (e.defaultPrevented) return
       e.preventDefault()
       e.stopPropagation()
 
