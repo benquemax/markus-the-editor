@@ -48,9 +48,9 @@ function ensureAgency(apiKey: string, backend: string = 'local'): AgencyConfig {
   createAdapter(config)
   console.log(`[Agency] Format adapter started on port ${config.adapterPort}`)
   console.log(`[Agency] Models:`)
-  console.log(`[Agency]   opus   → ${config.models.opus.modelId} @ ${config.models.opus.serverUrl}`)
-  console.log(`[Agency]   sonnet → ${config.models.sonnet.modelId} @ ${config.models.sonnet.serverUrl}`)
-  console.log(`[Agency]   haiku  → ${config.models.haiku.modelId} @ ${config.models.haiku.serverUrl}`)
+  console.log(`[Agency]   orchestrator → ${config.models.orchestrator.modelId} @ ${config.models.orchestrator.serverUrl}`)
+  console.log(`[Agency]   analyst      → ${config.models.analyst.modelId} @ ${config.models.analyst.serverUrl}`)
+  console.log(`[Agency]   worker       → ${config.models.worker.modelId} @ ${config.models.worker.serverUrl}`)
 
   // Allow SDK to spawn subprocess even when running inside Claude Code
   delete process.env.CLAUDECODE

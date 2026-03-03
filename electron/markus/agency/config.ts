@@ -1,10 +1,15 @@
 /**
  * Agency API Configuration
  *
- * Manages model tier mapping, server routing, and SDK configuration
- * for the Agency API. Maps Claude Agent SDK model aliases (opus/sonnet/haiku)
- * to actual local model names and routes requests to the correct server
- * (GPU for small models, CPU for large models).
+ * Manages model role assignments, server routing, and SDK configuration
+ * for the Agency API. Each role maps to an actual local model and server.
+ *
+ * Role naming reflects function in the agent hierarchy:
+ * - orchestrator: plans tasks and delegates to subagents (SDK 'opus' alias)
+ * - analyst: researches, reviews, and reasons about complex problems (SDK 'sonnet' alias)
+ * - worker: executes focused tasks quickly — edits, tests, simple reasoning (SDK 'haiku' alias)
+ *
+ * The SDK's ANTHROPIC_DEFAULT_*_MODEL env vars are set from these roles via getSdkEnvVars().
  */
 
 export interface ModelConfig {
@@ -28,11 +33,14 @@ export interface AgencyConfig {
   /** Port for the Agency API server */
   apiPort: number
 
-  /** Model tier assignments */
+  /** Model role assignments */
   models: {
-    opus: ModelConfig
-    sonnet: ModelConfig
-    haiku: ModelConfig
+    /** Plans and delegates — maps to SDK 'opus' alias */
+    orchestrator: ModelConfig
+    /** Researches and reviews — maps to SDK 'sonnet' alias */
+    analyst: ModelConfig
+    /** Executes focused tasks — maps to SDK 'haiku' alias */
+    worker: ModelConfig
   }
 
   /** Embedding model for RAG */
@@ -53,7 +61,8 @@ export interface AgencyConfig {
 
 /**
  * Default configuration for development.
- * Uses fast GPU models for haiku, CPU models for larger tiers.
+ * All three models run on Ollama CPU (ferocitee:11434) — vllama GPU
+ * has tool-calling bugs that make it unsuitable for the agency.
  */
 export function createDefaultConfig(): AgencyConfig {
   return {
@@ -61,7 +70,7 @@ export function createDefaultConfig(): AgencyConfig {
     apiPort: 3861,
 
     models: {
-      opus: {
+      orchestrator: {
         modelId: 'huihui_ai/devstral-abliterated:latest',
         serverUrl: 'http://ferocitee:11434',
         contextWindow: 131072,
@@ -70,13 +79,13 @@ export function createDefaultConfig(): AgencyConfig {
         // (finish_reason=tool_calls with no actual calls), so Ollama CPU is used instead.
         description: 'Devstral Abliterated on Ollama CPU — best reasoning, tool calling works'
       },
-      sonnet: {
+      analyst: {
         modelId: 'qwen3-coder-next:latest',
         serverUrl: 'http://ferocitee:11434',
         contextWindow: 74880,
         description: 'Qwen3 Coder Next on Ollama CPU — good all-rounder'
       },
-      haiku: {
+      worker: {
         modelId: 'ministral-3:14b',
         // vllama GPU server lists ministral but hangs on inference; using Ollama CPU works fine
         serverUrl: 'http://ferocitee:11434',
@@ -102,21 +111,21 @@ export function createDefaultConfig(): AgencyConfig {
 
 /**
  * Resolves the full ModelConfig for a given model name.
- * Returns the tier config including auth headers and API key.
+ * Returns the role config including auth headers and API key.
  */
 export function resolveModelConfig(config: AgencyConfig, modelName: string): ModelConfig {
-  for (const tier of Object.values(config.models)) {
-    if (tier.modelId === modelName) {
-      return tier
+  for (const role of Object.values(config.models)) {
+    if (role.modelId === modelName) {
+      return role
     }
   }
-  // Fallback: use the sonnet tier for unknown models
-  return config.models.sonnet
+  // Fallback: use the analyst role for unknown models
+  return config.models.analyst
 }
 
 /**
  * Resolves which server URL to use for a given model name.
- * Checks the model against all configured tiers.
+ * Checks the model against all configured roles.
  */
 export function resolveServerForModel(config: AgencyConfig, modelName: string): string {
   return resolveModelConfig(config, modelName).serverUrl
@@ -124,7 +133,7 @@ export function resolveServerForModel(config: AgencyConfig, modelName: string): 
 
 /**
  * Creates a Kimi cloud configuration for development/testing.
- * Uses Kimi K2.5 via cloud inference as the opus tier.
+ * Uses Kimi K2.5 via cloud inference as the orchestrator tier.
  */
 export function createKimiCloudConfig(apiKey: string): AgencyConfig {
   return {
@@ -132,7 +141,7 @@ export function createKimiCloudConfig(apiKey: string): AgencyConfig {
     apiPort: 3861,
 
     models: {
-      opus: {
+      orchestrator: {
         modelId: 'kimi-for-coding',
         serverUrl: 'https://api.kimi.com/coding/v1',
         contextWindow: 131072,
@@ -143,7 +152,7 @@ export function createKimiCloudConfig(apiKey: string): AgencyConfig {
           'User-Agent': 'KimiCLI/1.3'
         }
       },
-      sonnet: {
+      analyst: {
         modelId: 'kimi-for-coding',
         serverUrl: 'https://api.kimi.com/coding/v1',
         contextWindow: 131072,
@@ -154,7 +163,7 @@ export function createKimiCloudConfig(apiKey: string): AgencyConfig {
           'User-Agent': 'KimiCLI/1.3'
         }
       },
-      haiku: {
+      worker: {
         modelId: 'kimi-for-coding',
         serverUrl: 'https://api.kimi.com/coding/v1',
         contextWindow: 131072,
@@ -184,13 +193,14 @@ export function createKimiCloudConfig(apiKey: string): AgencyConfig {
 
 /**
  * Gets the SDK environment variables needed to configure model aliases.
+ * Maps our role names to the SDK's fixed alias names (opus/sonnet/haiku).
  */
 export function getSdkEnvVars(config: AgencyConfig): Record<string, string> {
   return {
     ANTHROPIC_BASE_URL: `http://localhost:${config.adapterPort}`,
     ANTHROPIC_API_KEY: 'agency-api-local',
-    ANTHROPIC_DEFAULT_OPUS_MODEL: config.models.opus.modelId,
-    ANTHROPIC_DEFAULT_SONNET_MODEL: config.models.sonnet.modelId,
-    ANTHROPIC_DEFAULT_HAIKU_MODEL: config.models.haiku.modelId,
+    ANTHROPIC_DEFAULT_OPUS_MODEL: config.models.orchestrator.modelId,
+    ANTHROPIC_DEFAULT_SONNET_MODEL: config.models.analyst.modelId,
+    ANTHROPIC_DEFAULT_HAIKU_MODEL: config.models.worker.modelId,
   }
 }

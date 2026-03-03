@@ -4,11 +4,11 @@
  * Configures the Claude Agent SDK for software engineering tasks:
  * implementation, code review, testing, and architecture.
  *
- * Subagent roles:
- * - coder: Implementation and file operations (haiku)
- * - reviewer: Code review and security analysis (sonnet)
- * - tester: Test execution and coverage analysis (haiku)
- * - architect: Design decisions and API planning (sonnet)
+ * Subagent roles and model assignments (SDK alias → role):
+ * - coder: Implementation and file operations (worker/haiku)
+ * - reviewer: Code review and security analysis (analyst/sonnet)
+ * - tester: Test execution and coverage analysis (worker/haiku)
+ * - architect: Design decisions and API planning (analyst/sonnet)
  */
 
 import type { ModeAgentDefinitions } from './writing'

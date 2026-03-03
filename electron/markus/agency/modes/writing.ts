@@ -2,15 +2,15 @@
  * Writing Mode — Agent Definitions
  *
  * Configures the Claude Agent SDK for creative writing, documentation,
- * and content editing tasks. The orchestrator (opus tier) decomposes writing
+ * and content editing tasks. The orchestrator model decomposes writing
  * tasks and delegates to specialized subagents.
  *
- * Subagent roles:
- * - editor: Fast, precise file editing with anchor matching (haiku)
- * - research: Information gathering and fact-checking (sonnet)
- * - critique: Quality review, consistency checking (haiku)
- * - style: Voice, tone, formatting review (haiku)
- * - creative: Ideation, brainstorming, character development (sonnet)
+ * Subagent roles and model assignments (SDK alias → role):
+ * - editor: Fast, precise file editing with anchor matching (worker/haiku)
+ * - research: Information gathering and fact-checking (analyst/sonnet)
+ * - critique: Quality review, consistency checking (worker/haiku)
+ * - style: Voice, tone, formatting review (worker/haiku)
+ * - creative: Ideation, brainstorming, character development (analyst/sonnet)
  */
 
 /** Agent definitions keyed by agent name for the SDK's agents option */

@@ -24,21 +24,21 @@ const SERVERS = {
 }
 
 const MODELS = {
-  haiku: {
+  worker: {
     id: 'ministral-3:14b',
     // vllama GPU server lists ministral but hangs on inference; Ollama CPU works fine
     server: 'ollama',
-    description: 'Ministral 14B — CPU inference (vllama hangs)'
+    description: 'Ministral 14B — CPU inference (vllama hangs) — worker role'
   },
-  sonnet: {
+  analyst: {
     id: 'qwen3-coder-next:latest',
     server: 'ollama',
-    description: 'Qwen3 Coder Next — good all-rounder'
+    description: 'Qwen3 Coder Next — good all-rounder — analyst role'
   },
-  opus: {
+  orchestrator: {
     id: 'huihui_ai/devstral-abliterated:latest',
     server: 'ollama',
-    description: 'Devstral Abliterated — best reasoning (vllama tool calls broken)'
+    description: 'Devstral Abliterated — best reasoning — orchestrator role'
   }
 }
 
@@ -49,9 +49,9 @@ const RUN_TOOL_CALLING = true
 const RUN_ADAPTER = true
 
 // Which models to test (set to false to skip slow models)
-const TEST_HAIKU = true
-const TEST_SONNET = true
-const TEST_OPUS = true
+const TEST_WORKER = true
+const TEST_ANALYST = true
+const TEST_ORCHESTRATOR = true
 
 // Timeout for LLM requests (local models can be slow, especially on CPU)
 const COMPLETION_TIMEOUT_MS = 180_000
@@ -121,9 +121,9 @@ function getServerUrl(modelTier) {
 
 function getTestTiers() {
   const tiers = []
-  if (TEST_HAIKU) tiers.push('haiku')
-  if (TEST_SONNET) tiers.push('sonnet')
-  if (TEST_OPUS) tiers.push('opus')
+  if (TEST_WORKER) tiers.push('worker')
+  if (TEST_ANALYST) tiers.push('analyst')
+  if (TEST_ORCHESTRATOR) tiers.push('orchestrator')
   return tiers
 }
 
@@ -145,9 +145,9 @@ async function testConnectivity() {
   }
 
   for (const [tier, model] of Object.entries(MODELS)) {
-    const shouldTest = (tier === 'haiku' && TEST_HAIKU) ||
-                       (tier === 'sonnet' && TEST_SONNET) ||
-                       (tier === 'opus' && TEST_OPUS)
+    const shouldTest = (tier === 'worker' && TEST_WORKER) ||
+                       (tier === 'analyst' && TEST_ANALYST) ||
+                       (tier === 'orchestrator' && TEST_ORCHESTRATOR)
     if (!shouldTest) { skip(`${tier} model available`, 'disabled'); continue }
 
     await test(`${tier} model (${model.id}) on ${model.server}`, async () => {
@@ -332,8 +332,8 @@ async function testAdapter() {
     })
 
     // Test completions through adapter (Anthropic format in, Anthropic format out)
-    // Only test haiku and sonnet (opus is slow on CPU)
-    const adapterTiers = getTestTiers().filter(t => t !== 'opus')
+    // Only test worker and analyst (orchestrator is slow on CPU)
+    const adapterTiers = getTestTiers().filter(t => t !== 'orchestrator')
     for (const tier of adapterTiers) {
       const model = MODELS[tier]
 
@@ -413,7 +413,7 @@ async function testAdapter() {
 
 async function main() {
   console.log('\n--- Agency API Test Suite --- Local Models on ferocitee\n')
-  console.log(`Models: haiku=${TEST_HAIKU} sonnet=${TEST_SONNET} opus=${TEST_OPUS}`)
+  console.log(`Models: worker=${TEST_WORKER} analyst=${TEST_ANALYST} orchestrator=${TEST_ORCHESTRATOR}`)
   console.log(`Tests:  connectivity=${RUN_CONNECTIVITY} completions=${RUN_COMPLETIONS} tools=${RUN_TOOL_CALLING} adapter=${RUN_ADAPTER}`)
 
   const start = Date.now()
