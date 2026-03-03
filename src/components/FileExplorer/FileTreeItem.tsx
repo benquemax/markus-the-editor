@@ -146,8 +146,10 @@ export function FileTreeItem({
     const urlMatch = droppedUrl.trim().split('\n')[0]
     if (/^https?:\/\/.+/i.test(urlMatch)) {
       // Main process handles save dialog with slug-based filename
-      await window.electron.converter.importUrl(urlMatch, node.path)
-      onFileDrop?.(node.path)
+      const result = await window.electron.converter.importUrl(urlMatch, node.path)
+      if (result.success) {
+        onFileDrop?.(node.path)
+      }
       return
     }
 

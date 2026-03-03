@@ -108,7 +108,7 @@ export interface ImportUrlResult {
  * for article extraction. Returns markdown with frontmatter, page title,
  * and a filename slug.
  *
- * Defuddle is Mozilla's Readability successor — it strips navigation,
+ * Defuddle (by the Obsidian team) strips navigation,
  * ads, and boilerplate, keeping only the article content. The `markdown: true`
  * option makes it return Markdown directly instead of HTML.
  */

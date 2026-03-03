@@ -642,29 +642,43 @@ function App() {
     await window.electron.converter.importWithDialog()
   }, [])
 
-  // Open a URL import result as a new unsaved tab
-  const openUrlAsTab = useCallback((markdown: string, title: string) => {
-    const newTab: Tab = {
-      id: `url-import-${Date.now()}`,
+  // Import a URL as markdown, showing a loading tab while fetching.
+  // Used by both the menu dialog and the editor drop handler.
+  const importUrlToTab = useCallback(async (url: string) => {
+    // Open a loading placeholder tab immediately so the user sees feedback
+    const tabId = `url-import-${Date.now()}`
+    const loadingTab: Tab = {
+      id: tabId,
       filePath: null,
-      title,
-      content: markdown,
+      title: 'Importing...',
+      content: `Importing ${url}...`,
       savedContent: '',
-      isDirty: true,
+      isDirty: false,
       fileType: 'markdown' as const
     }
-    setTabs(prev => [...prev, newTab])
-    setActiveTabId(newTab.id)
-  }, [])
+    setTabs(prev => [...prev, loadingTab])
+    setActiveTabId(tabId)
 
-  // Handle URL import: fetch webpage, convert to markdown, open as unsaved tab
-  const handleImportUrl = useCallback(async (url: string) => {
-    setShowUrlImport(false)
     const result = await window.electron.converter.importUrl(url)
     if (result.success && result.markdown) {
-      openUrlAsTab(result.markdown, result.title || 'Imported Page')
+      // Replace loading tab content with the imported markdown
+      setTabs(prev => prev.map(t => t.id === tabId ? {
+        ...t,
+        title: result.title || 'Imported Page',
+        content: result.markdown!,
+        isDirty: true
+      } : t))
+    } else {
+      // Remove the loading tab on failure (error dialog shown by main process)
+      setTabs(prev => prev.filter(t => t.id !== tabId))
     }
-  }, [openUrlAsTab])
+  }, [])
+
+  // Handle URL import from menu dialog
+  const handleImportUrl = useCallback(async (url: string) => {
+    setShowUrlImport(false)
+    await importUrlToTab(url)
+  }, [importUrlToTab])
 
   // Handle export: gets current content and sends to main process
   const handleExport = useCallback(async (format: 'docx' | 'odt' | 'html') => {
@@ -827,10 +841,7 @@ function App() {
         || ''
       const urlMatch = droppedUrl.trim().split('\n')[0]
       if (/^https?:\/\/.+/i.test(urlMatch)) {
-        const result = await window.electron.converter.importUrl(urlMatch)
-        if (result.success && result.markdown) {
-          openUrlAsTab(result.markdown, result.title || 'Imported Page')
-        }
+        await importUrlToTab(urlMatch)
         return
       }
 
@@ -887,7 +898,7 @@ function App() {
       document.removeEventListener('drop', handleDrop)
       document.removeEventListener('dragover', handleDragOver)
     }
-  }, [addFolderToWorkspace, openUrlAsTab])
+  }, [addFolderToWorkspace, importUrlToTab])
 
   const handleContentChange = useCallback((newContent: string, newWordCount: number, newCharCount: number) => {
     if (activeTabId) {
