@@ -28,6 +28,7 @@ export interface FileViewerHandle {
   getContent: () => string
   addComment: () => void
   toggleComments: () => void
+  toggleMetadata: () => void
 }
 
 /**
@@ -76,6 +77,9 @@ export const FileViewer = forwardRef<FileViewerHandle, FileViewerProps>(
       },
       toggleComments: () => {
         proseMirrorRef.current?.toggleComments()
+      },
+      toggleMetadata: () => {
+        proseMirrorRef.current?.toggleMetadata()
       }
     }), [tab.content])
 

@@ -30,6 +30,8 @@ import { reinitializeMermaidForTheme } from './nodeviews/mermaidRenderer'
 import { createImageBlockNodeView } from './nodeviews/ImageBlockView'
 import { extractComments, injectComments, CommentThread, CommentInjection } from '../lib/comments'
 import { extractImageBlocks, findImageByPlaceholder, ParsedImageBlock } from '../lib/imageBlock'
+import { extractFrontmatter, injectFrontmatter, FrontmatterData, FrontmatterField } from '../lib/frontmatter'
+import { MetadataPanel } from '../components/MetadataPanel/MetadataPanel'
 import { createProgressPlugin, progressPluginKey, ProgressPluginMeta } from './plugins/progress/progressPlugin'
 
 export interface ProseMirrorEditorHandle {
@@ -37,6 +39,7 @@ export interface ProseMirrorEditorHandle {
   setContent: (content: string) => void
   addComment: () => void
   toggleComments: () => void
+  toggleMetadata: () => void
 }
 
 interface ProseMirrorEditorProps {
@@ -96,8 +99,12 @@ function replaceImagePlaceholders(
  * and the extracted thread data.
  */
 function parseWithComments(content: string) {
+  // Step 0: Strip frontmatter before any markdown parsing so `---`
+  // delimiters don't get interpreted as horizontal rules
+  const { cleaned: fmCleaned, frontmatter } = extractFrontmatter(content)
+
   // Step 1: Extract comments from markdown
-  const { cleaned: commentCleaned, comments } = extractComments(content)
+  const { cleaned: commentCleaned, comments } = extractComments(fmCleaned)
 
   // Step 2: Extract <img> block tags before markdown-it parsing
   const { cleaned: imgCleaned, images } = extractImageBlocks(commentCleaned)
@@ -109,7 +116,7 @@ function parseWithComments(content: string) {
   doc = replaceImagePlaceholders(doc, images)
 
   if (!doc || comments.length === 0) {
-    return { doc, threads: new Map<string, CommentThread>() }
+    return { doc, threads: new Map<string, CommentThread>(), frontmatter }
   }
 
   // Build a mapping from text offset to ProseMirror position.
@@ -147,7 +154,7 @@ function parseWithComments(content: string) {
     tr = tr.addMark(from, to, mark)
   }
 
-  return { doc: tr.doc, threads }
+  return { doc: tr.doc, threads, frontmatter }
 }
 
 /**
@@ -156,7 +163,8 @@ function parseWithComments(content: string) {
  */
 function serializeWithComments(
   view: EditorView,
-  threads: Map<string, CommentThread>
+  threads: Map<string, CommentThread>,
+  frontmatter: FrontmatterData | null = null
 ): string {
   const { doc } = view.state
   const markdown = markdownSerializer.serialize(doc)
@@ -214,7 +222,10 @@ function serializeWithComments(
     })
   })
 
-  return injectComments(markdown, injections)
+  const withComments = injectComments(markdown, injections)
+
+  // Final step: prepend frontmatter if present
+  return injectFrontmatter(withComments, frontmatter)
 }
 
 export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirrorEditorProps>(
@@ -257,6 +268,11 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     const [lightboxSrc, setLightboxSrc] = useState<string | null>(null)
     const [lightboxAlt, setLightboxAlt] = useState('')
 
+    // Frontmatter state — extracted before markdown parsing, re-injected on serialize
+    const [frontmatter, setFrontmatter] = useState<FrontmatterData | null>(null)
+    const [showMetadata, setShowMetadata] = useState(false)
+    const frontmatterRef = useRef<FrontmatterData | null>(null)
+
     // Keep threads ref in sync with plugin state
     const handleCommentStateChange = useCallback((state: CommentPluginState) => {
       setCommentState(state)
@@ -265,14 +281,18 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
 
     const getContent = useCallback(() => {
       if (!viewRef.current) return ''
-      return serializeWithComments(viewRef.current, commentThreadsRef.current)
+      return serializeWithComments(viewRef.current, commentThreadsRef.current, frontmatterRef.current)
     }, [])
 
     const setContent = useCallback((content: string) => {
       if (!viewRef.current) return
 
-      const { doc, threads } = parseWithComments(content)
+      const { doc, threads, frontmatter: fm } = parseWithComments(content)
       if (!doc) return
+
+      // Update frontmatter state for the MetadataPanel
+      frontmatterRef.current = fm
+      setFrontmatter(fm)
 
       const newState = EditorState.create({
         doc,
@@ -318,19 +338,37 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       )
     }, [])
 
-    useImperativeHandle(ref, () => ({
-      getContent,
-      setContent,
-      addComment: handleAddComment,
-      toggleComments: handleToggleComments
-    }))
-
     const countWords = useCallback((text: string): number => {
       return text
         .trim()
         .split(/\s+/)
         .filter(word => word.length > 0).length
     }, [])
+
+    const handleToggleMetadata = useCallback(() => {
+      setShowMetadata(v => !v)
+    }, [])
+
+    const handleFrontmatterChange = useCallback((fields: FrontmatterField[]) => {
+      const updated: FrontmatterData = { fields, rawYaml: '' }
+      frontmatterRef.current = updated
+      setFrontmatter(updated)
+
+      // Trigger onChange to mark the document as dirty
+      if (viewRef.current && onChange) {
+        const markdown = serializeWithComments(viewRef.current, commentThreadsRef.current, updated)
+        const text = viewRef.current.state.doc.textContent
+        onChange(markdown, countWords(text), text.length)
+      }
+    }, [onChange, countWords])
+
+    useImperativeHandle(ref, () => ({
+      getContent,
+      setContent,
+      addComment: handleAddComment,
+      toggleComments: handleToggleComments,
+      toggleMetadata: handleToggleMetadata
+    }))
 
     useEffect(() => {
       if (!editorRef.current) return
@@ -343,6 +381,10 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
         const result = parseWithComments(initialContent)
         doc = result.doc
         initialThreads = result.threads
+        // Store initial frontmatter for the MetadataPanel
+        frontmatterRef.current = result.frontmatter
+        setFrontmatter(result.frontmatter)
+        if (result.frontmatter) setShowMetadata(true)
       } else {
         doc = schema.nodes.doc.create(null, schema.nodes.paragraph.create())
       }
@@ -379,7 +421,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
           view.updateState(newState)
 
           if (transaction.docChanged && onChange) {
-            const markdown = serializeWithComments(view, commentThreadsRef.current)
+            const markdown = serializeWithComments(view, commentThreadsRef.current, frontmatterRef.current)
             const text = newState.doc.textContent
             onChange(markdown, countWords(text), text.length)
           }
@@ -422,7 +464,7 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
       // Emit initial stats
       if (onChange) {
         const text = view.state.doc.textContent
-        const markdown = serializeWithComments(view, commentThreadsRef.current)
+        const markdown = serializeWithComments(view, commentThreadsRef.current, frontmatterRef.current)
         onChange(markdown, countWords(text), text.length)
       }
 
@@ -600,39 +642,48 @@ export const ProseMirrorEditor = forwardRef<ProseMirrorEditorHandle, ProseMirror
     const hasComments = commentState.showComments && commentState.threads.size > 0
 
     return (
-      <div className="relative h-full">
-        <div
-          ref={editorRef}
-          className={`h-full overflow-auto thin-scrollbar${commentState.showComments ? '' : ' comments-hidden'}`}
-          style={hasComments ? { paddingRight: '300px' } : undefined}
+      <div className="relative h-full flex flex-col">
+        {/* Frontmatter metadata panel — sits above the editor */}
+        <MetadataPanel
+          fields={frontmatter?.fields ?? []}
+          onChange={handleFrontmatterChange}
+          isOpen={showMetadata}
+          onToggle={handleToggleMetadata}
         />
-        <SlashMenu
-          state={slashMenuState}
-          onSelect={handleSlashMenuSelect}
-        />
-        {/* Comment margin panel */}
-        <CommentMargin
-          view={viewRef.current}
-          commentState={commentState}
-          author={commentAuthor}
-          filePath={filePath}
-        />
-        {/* Right-click context menu */}
-        {commentState.contextMenu && (
-          <ContextMenu
-            items={contextMenuItems}
-            position={commentState.contextMenu}
-            onClose={handleCloseContextMenu}
+        <div className="relative flex-1 min-h-0">
+          <div
+            ref={editorRef}
+            className={`h-full overflow-auto thin-scrollbar${commentState.showComments ? '' : ' comments-hidden'}`}
+            style={hasComments ? { paddingRight: '300px' } : undefined}
           />
-        )}
-        {/* Image lightbox */}
-        {lightboxSrc && (
-          <Lightbox
-            src={lightboxSrc}
-            alt={lightboxAlt}
-            onClose={() => setLightboxSrc(null)}
+          <SlashMenu
+            state={slashMenuState}
+            onSelect={handleSlashMenuSelect}
           />
-        )}
+          {/* Comment margin panel */}
+          <CommentMargin
+            view={viewRef.current}
+            commentState={commentState}
+            author={commentAuthor}
+            filePath={filePath}
+          />
+          {/* Right-click context menu */}
+          {commentState.contextMenu && (
+            <ContextMenu
+              items={contextMenuItems}
+              position={commentState.contextMenu}
+              onClose={handleCloseContextMenu}
+            />
+          )}
+          {/* Image lightbox */}
+          {lightboxSrc && (
+            <Lightbox
+              src={lightboxSrc}
+              alt={lightboxAlt}
+              onClose={() => setLightboxSrc(null)}
+            />
+          )}
+        </div>
       </div>
     )
   }

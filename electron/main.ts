@@ -175,7 +175,7 @@ function handleNewTab() {
  * File type detection helpers
  */
 const BINARY_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp', 'bmp', 'ico', 'mp4', 'webm', 'mov', 'avi', 'mkv', 'ogg']
-const SUPPORTED_EXTENSIONS = ['md', 'markdown', 'json', 'html', 'htm', ...BINARY_EXTENSIONS]
+const SUPPORTED_EXTENSIONS = ['md', 'markdown', 'mdx', 'json', 'html', 'htm', ...BINARY_EXTENSIONS]
 
 function getFileExtension(filePath: string): string {
   const parts = filePath.split('.')
@@ -190,7 +190,7 @@ async function handleOpenFile() {
   const result = await showOpenDialog({
     properties: ['openFile'],
     filters: [
-      { name: 'Markdown', extensions: ['md', 'markdown'] },
+      { name: 'Markdown', extensions: ['md', 'markdown', 'mdx'] },
       { name: 'JSON', extensions: ['json'] },
       { name: 'HTML', extensions: ['html', 'htm'] },
       { name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'] },
