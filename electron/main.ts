@@ -595,6 +595,12 @@ app.on('open-file', async (event, filePath) => {
   }
 })
 
+// Use a separate userData path in dev mode so the dev instance doesn't conflict
+// with an installed production Markus app that already holds the single-instance lock.
+if (process.env.VITE_DEV_SERVER_URL) {
+  app.setPath('userData', path.join(app.getPath('userData'), '-dev'))
+}
+
 // Handle second instance (for single instance lock)
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
