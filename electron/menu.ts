@@ -9,6 +9,7 @@ interface MenuCallbacks {
   onSaveAsFile: () => void
   onPrintToPdf: () => void
   onImport: () => void
+  onImportUrl: () => void
   onExportDocx: () => void
   onExportOdt: () => void
   onExportHtml: () => void
@@ -84,6 +85,11 @@ export function createMenu(window: BrowserWindow, callbacks: MenuCallbacks): Men
           label: 'Import...',
           accelerator: 'CmdOrCtrl+Shift+I',
           click: callbacks.onImport
+        },
+        {
+          label: 'Import from URL...',
+          accelerator: 'CmdOrCtrl+Shift+U',
+          click: callbacks.onImportUrl
         },
         { type: 'separator' },
         {

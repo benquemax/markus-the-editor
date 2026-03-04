@@ -268,7 +268,9 @@ export interface ElectronAPI {
     importFile: (sourcePath: string, targetDir?: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
     importWithDialog: () => Promise<{ success: boolean; filePath?: string; error?: string }>
     exportFile: (content: string, format: ExportFormat) => Promise<{ success: boolean; error?: string }>
+    importUrl: (url: string, targetDir?: string) => Promise<{ success: boolean; markdown?: string; title?: string; filePath?: string; error?: string }>
     onImport: (callback: () => void) => () => void
+    onImportUrl: (callback: () => void) => () => void
     onExportDocx: (callback: () => void) => () => void
     onExportOdt: (callback: () => void) => () => void
     onExportHtml: (callback: () => void) => () => void
@@ -525,10 +527,16 @@ const api: ElectronAPI = {
     importFile: (sourcePath, targetDir) => ipcRenderer.invoke('converter:importFile', sourcePath, targetDir),
     importWithDialog: () => ipcRenderer.invoke('converter:importWithDialog'),
     exportFile: (content, format) => ipcRenderer.invoke('converter:exportFile', { content, format }),
+    importUrl: (url, targetDir) => ipcRenderer.invoke('converter:importUrl', url, targetDir),
     onImport: (callback) => {
       const handler = () => callback()
       ipcRenderer.on('menu:import', handler)
       return () => ipcRenderer.removeListener('menu:import', handler)
+    },
+    onImportUrl: (callback) => {
+      const handler = () => callback()
+      ipcRenderer.on('menu:importUrl', handler)
+      return () => ipcRenderer.removeListener('menu:importUrl', handler)
     },
     onExportDocx: (callback) => {
       const handler = () => callback()

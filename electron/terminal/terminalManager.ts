@@ -8,6 +8,8 @@
  */
 
 import * as pty from 'node-pty'
+import * as fs from 'fs'
+import * as os from 'os'
 import { getVcatEnv } from './vcatPath'
 
 interface ManagedTerminal {
@@ -43,11 +45,15 @@ export function createTerminal(
       : process.env.PATH
   } as Record<string, string>
 
+  // node-pty throws posix_spawnp failed if cwd doesn't exist on disk.
+  // Fall back to home directory so the terminal still opens rather than crashing.
+  const safeCwd = cwd && fs.existsSync(cwd) ? cwd : os.homedir()
+
   const terminal = pty.spawn(shell, [], {
     name: 'xterm-256color',
     cols,
     rows,
-    cwd,
+    cwd: safeCwd,
     env
   })
 

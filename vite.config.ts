@@ -3,7 +3,6 @@ import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
 import renderer from 'vite-plugin-electron-renderer'
 import path from 'path'
-import fs from 'fs'
 
 export default defineConfig({
   plugins: [
@@ -16,24 +15,17 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            lib: {
-              entry: 'electron/main.ts',
-              formats: ['cjs']
-            },
             rollupOptions: {
-              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty', 'mammoth', 'word-extractor', 'turndown', 'turndown-plugin-gfm', 'html-to-docx', 'pdfjs-dist/legacy/build/pdf.mjs'],
+              // Using rollupOptions.input instead of lib mode to avoid a double-emit
+              // bug: lib mode + entryFileNames causes Rollup to write main.js twice in
+              // one pass, leaving trailing bytes from the larger first write that produce
+              // a SyntaxError when Electron loads the file.
+              input: 'electron/main.ts',
+              external: ['electron', 'electron-store', 'chokidar', 'simple-git', 'express', 'ws', 'node-pty', 'mammoth', 'word-extractor', 'turndown', 'turndown-plugin-gfm', 'html-to-docx', 'pdfjs-dist/legacy/build/pdf.mjs', 'defuddle', 'defuddle/node', 'canvas'],
               output: {
+                format: 'cjs',
                 entryFileNames: 'main.js'
-              },
-              // Delete stale output before each rebuild. Without this, the dev
-              // watcher can leave trailing bytes from a previous larger build,
-              // producing a SyntaxError on load.
-              plugins: [{
-                name: 'clean-main',
-                buildStart() {
-                  try { fs.unlinkSync('dist-electron/main.js') } catch { /* ignore */ }
-                }
-              }]
+              }
             }
           }
         }
@@ -45,21 +37,14 @@ export default defineConfig({
         vite: {
           build: {
             outDir: 'dist-electron',
-            lib: {
-              entry: 'electron/preload.ts',
-              formats: ['cjs']
-            },
             rollupOptions: {
+              // Same fix as main: input instead of lib mode to avoid double-emit.
+              input: 'electron/preload.ts',
               external: ['electron'],
               output: {
+                format: 'cjs',
                 entryFileNames: 'preload.js'
-              },
-              plugins: [{
-                name: 'clean-preload',
-                buildStart() {
-                  try { fs.unlinkSync('dist-electron/preload.js') } catch { /* ignore */ }
-                }
-              }]
+              }
             }
           }
         }
