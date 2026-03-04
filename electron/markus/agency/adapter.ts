@@ -528,7 +528,13 @@ export function createAdapter(config: AgencyConfig): { app: express.Express; ser
       ? `${serverUrl}/chat/completions`
       : `${serverUrl}/v1/chat/completions`
 
-    console.log(`[Adapter] ${model} → ${openaiEndpoint} (stream=${anthropicReq.stream})`)
+    // Show descriptive role name so logs read "worker (ministral-3:14b)" instead of raw SDK alias
+    const modelLower = model.toLowerCase()
+    const roleLabel = modelLower.includes('haiku') ? `worker (${modelConfig.modelId})`
+      : modelLower.includes('sonnet') ? `analyst (${modelConfig.modelId})`
+      : modelLower.includes('opus') ? `orchestrator (${modelConfig.modelId})`
+      : modelConfig.modelId
+    console.log(`[Adapter] ${roleLabel} → ${openaiEndpoint} (stream=${anthropicReq.stream})`)
 
     try {
       const openaiReq = translateRequest(anthropicReq)

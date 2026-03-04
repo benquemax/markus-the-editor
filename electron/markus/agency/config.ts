@@ -112,13 +112,29 @@ export function createDefaultConfig(): AgencyConfig {
 /**
  * Resolves the full ModelConfig for a given model name.
  * Returns the role config including auth headers and API key.
+ *
+ * Handles two naming conventions:
+ * 1. Exact local model IDs (e.g. 'ministral-3:14b') — matched directly
+ * 2. Claude Agent SDK alias patterns (e.g. 'claude-haiku-4-5-20251001') —
+ *    the SDK resolves ANTHROPIC_DEFAULT_*_MODEL env vars into these alias
+ *    strings, which contain 'haiku', 'sonnet', or 'opus' as substrings.
+ *    We map these to the corresponding role tier.
  */
 export function resolveModelConfig(config: AgencyConfig, modelName: string): ModelConfig {
+  // Exact match first (for actual local model IDs like 'ministral-3:14b')
   for (const role of Object.values(config.models)) {
     if (role.modelId === modelName) {
       return role
     }
   }
+
+  // SDK alias pattern matching — SDK sends e.g. 'claude-haiku-4-5-20251001'
+  // which contains the tier name as a substring
+  const lower = modelName.toLowerCase()
+  if (lower.includes('haiku')) return config.models.worker
+  if (lower.includes('sonnet')) return config.models.analyst
+  if (lower.includes('opus')) return config.models.orchestrator
+
   // Fallback: use the analyst role for unknown models
   return config.models.analyst
 }
